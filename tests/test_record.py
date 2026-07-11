@@ -225,6 +225,14 @@ def test_append_refuses_truncated_log(log):
     assert log.head_path.read_text() == head_before
 
 
+def test_verify_reports_checkpoint_with_invalid_encoding(log):
+    log.append(make_record())
+    log.head_path.write_bytes(b"\xff\xfe")
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "malformed head checkpoint"
+
+
 def test_append_rejects_non_finite_numbers(log):
     log.append(make_record())
     log_before = log.path.read_text()

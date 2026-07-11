@@ -281,7 +281,7 @@ class DecisionLog:
         try:
             head = json.loads(self.head_path.read_text(encoding="utf-8"))
             expected_count, expected_hash = head["count"], head["head_hash"]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
             return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
         if expected_count != count or expected_hash != prev:
             return VerifyResult(
