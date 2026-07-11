@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/SJ1989/caucus"
+Repository = "https://github.com/srinath-jukanti/caucus"
 
 [project.scripts]
 caucus = "caucus.cli:app"

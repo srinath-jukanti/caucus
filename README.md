@@ -20,7 +20,7 @@ Caucus is a decision layer, not another agent framework. It orchestrates deliber
 Requires [uv](https://docs.astral.sh/uv/) and [Claude Code](https://claude.com/claude-code).
 
 ```bash
-git clone https://github.com/SJ1989/caucus.git && cd caucus
+git clone https://github.com/srinath-jukanti/caucus.git && cd caucus
 uv sync
 uv run caucus version
 ```
