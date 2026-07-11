@@ -1,0 +1,21 @@
+{
+  "minimumSeverity": "medium",
+  "blockingSeverities": ["blocker", "high"],
+  "enabledCategories": [
+    "logic",
+    "security",
+    "runtime",
+    "deploy",
+    "test",
+    "maintainability"
+  ],
+  "ignoredPaths": [
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.gif",
+    "**/*.lock",
+    "uv.lock"
+  ],
+  "maxInlineComments": 20,
+  "summaryCommentMarker": "<!-- caucus-codex-review-summary -->"
+}

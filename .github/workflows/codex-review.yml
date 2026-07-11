@@ -1,0 +1,170 @@
+name: Codex PR review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Codex review
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      statuses: write
+
+    steps:
+      - name: Checkout trusted review implementation
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 1
+
+      - name: Checkout pull request merge commit for analysis
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+          path: review-target
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Codex CLI
+        shell: bash
+        run: |
+          npm install --global @openai/codex
+
+      - name: Run quality checks against PR (ground truth for the reviewer)
+        shell: bash
+        working-directory: review-target
+        run: |
+          {
+            echo "## uv sync"
+            uv sync --frozen 2>&1 | tail -5 || true
+            echo "## ruff format --check"
+            uv run ruff format --check . 2>&1 || true
+            echo "## ruff check"
+            uv run ruff check . 2>&1 || true
+            echo "## pytest"
+            uv run pytest -q 2>&1 | tail -30 || true
+          } > ../quality-output.txt
+          cat ../quality-output.txt
+
+      - name: Pre-fetch base and head refs
+        shell: bash
+        run: |
+          git -C review-target fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Build Codex review prompt
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_WORKTREE: review-target
+          QUALITY_OUTPUT: quality-output.txt
+        run: |
+          node .github/codex/scripts/build-review-prompt.mjs codex-review-prompt.md
+
+      - name: Restore Codex auth.json
+        shell: bash
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+          mkdir -p "$CODEX_HOME"
+          chmod 700 "$CODEX_HOME"
+
+          if [ -z "$CODEX_AUTH_JSON" ]; then
+            echo "CODEX_AUTH_JSON is not configured." >&2
+            exit 1
+          fi
+
+          printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
+          chmod 600 "$CODEX_HOME/auth.json"
+
+      - name: Run Codex review
+        id: run_codex
+        shell: bash
+        run: |
+          codex exec --ephemeral --sandbox read-only --ignore-rules -o codex-review.raw.md - < codex-review-prompt.md
+
+      - name: Remove Codex auth.json
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${CODEX_HOME:-$HOME/.codex}/auth.json"
+
+      - name: Normalize Codex review
+        shell: bash
+        run: |
+          node .github/codex/scripts/normalize-review-output.mjs codex-review.raw.md codex-review.json
+
+      - name: Post Codex feedback
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const postReview = require("./.github/codex/scripts/post-review.cjs");
+            await postReview({ github, context, core });
+
+      - name: Post commit status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ ! -f codex-review.json ]; then
+            state="failure"
+            description="Code review did not complete"
+          else
+            decision=$(node -e "const r=require('./codex-review.json'); console.log(r.decision || '')")
+            if [ "$decision" = "approve" ]; then
+              state="success"
+              description="Code review passed"
+            else
+              state="failure"
+              description="Code review: changes requested"
+            fi
+          fi
+          echo "Posting commit status: $state"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$HEAD_SHA" \
+            --method POST \
+            --field state="$state" \
+            --field context="codex-review" \
+            --field description="$description"
+
+      - name: Enable auto-merge on approval
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -f codex-review.json ]; then
+            echo "Review did not complete; skipping auto-merge."
+            exit 0
+          fi
+          decision=$(node -e "const r=require('./codex-review.json'); console.log(r.decision || '')")
+          if [ "$decision" = "approve" ]; then
+            echo "Bot approved PR #${PR_NUMBER}; enabling auto-merge."
+            gh pr merge "$PR_NUMBER" --auto --squash --repo "$GITHUB_REPOSITORY" || true
+          else
+            echo "Bot decision is '${decision}'; skipping auto-merge."
+          fi

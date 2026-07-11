@@ -1,0 +1,78 @@
+name: Keep Codex auth fresh
+
+# NOTE: The worker now refreshes the OAuth access token on-demand before each
+# review job starts (see refreshOAuthAccessToken in agent-review-runner.ts).
+# This weekly cron job is no longer the primary refresh mechanism — it is kept
+# as supplementary infrastructure to prevent the refresh token itself from
+# expiring due to inactivity. OpenAI refresh tokens can expire if unused for
+# an extended period, so running Codex weekly keeps them alive. It is safe to
+# disable this workflow if you switch to API key auth (AGENT_AUTH_TYPE=api_key).
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-codex-auth-fresh
+  cancel-in-progress: false
+
+jobs:
+  keep-codex-auth-fresh:
+    name: Keep Codex auth fresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      GH_SECRETS_WRITE_TOKEN: ${{ secrets.GH_SECRETS_WRITE_TOKEN }}
+
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install Codex CLI
+        shell: bash
+        run: |
+          npm install --global @openai/codex
+
+      - name: Restore auth.json
+        shell: bash
+        run: |
+          export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+          mkdir -p "$CODEX_HOME"
+          chmod 700 "$CODEX_HOME"
+
+          if [ -z "$CODEX_AUTH_JSON" ]; then
+            echo "CODEX_AUTH_JSON is not configured." >&2
+            exit 1
+          fi
+
+          printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
+          chmod 600 "$CODEX_HOME/auth.json"
+
+      - name: Run Codex
+        shell: bash
+        run: |
+          codex exec --ephemeral --skip-git-repo-check "Reply with the single word OK." >/dev/null
+
+      - name: Persist refreshed auth.json to GitHub secret
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRETS_WRITE_TOKEN }}
+        run: |
+          if [ -z "$GH_SECRETS_WRITE_TOKEN" ]; then
+            echo "GH_SECRETS_WRITE_TOKEN is not configured." >&2
+            exit 1
+          fi
+
+          gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "${CODEX_HOME:-$HOME/.codex}/auth.json"
+
+      - name: Remove Codex auth.json
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${CODEX_HOME:-$HOME/.codex}/auth.json"
