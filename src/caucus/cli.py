@@ -24,7 +24,12 @@ def verify(path: Path) -> None:
     """Verify the hash chain of a decision log (see SPEC.md)."""
     result = DecisionLog(path).verify()
     if result.ok:
-        typer.echo(f"OK — {result.count} records, chain intact")
+        anchor = (
+            "anchored to head checkpoint"
+            if result.anchored
+            else "UNANCHORED — no head checkpoint, tail truncation would not be detectable"
+        )
+        typer.echo(f"OK — {result.count} records, chain intact ({anchor})")
     else:
         typer.echo(
             f"TAMPERED — record {result.broken_at}: {result.reason} "

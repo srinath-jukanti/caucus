@@ -1,24 +1,49 @@
 """Append-only, hash-chained decision records — the Caucus audit log.
 
-Two guarantees, enforced by construction:
+Integrity model (see SPEC.md):
 - nothing can be silently altered: each record's hash covers its content;
-- nothing can be silently removed: each record embeds its predecessor's hash,
-  so deleting a line breaks the successor's link.
+- nothing can be silently removed from the interior: each record embeds its
+  predecessor's hash, so deleting a line breaks the successor's link;
+- truncation of the tail is detected via a head checkpoint file maintained
+  alongside the log. The checkpoint shares the log's trust domain — for a
+  stronger guarantee, anchor the head hash externally (commit it, publish it).
 
-Appends are serialized with an advisory file lock so concurrent writers
-cannot fork the chain.
+Appends are serialized with a cross-platform lock on a sidecar lock file so
+concurrent writers cannot fork the chain.
 """
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
+import re
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
+
+try:  # POSIX
+    import fcntl
+
+    def _lock_file(handle) -> None:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+
+    def _unlock_file(handle) -> None:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+
+except ImportError:  # Windows
+    import msvcrt
+
+    def _lock_file(handle) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+
+    def _unlock_file(handle) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
 
 SCHEMA_VERSION = "0.1"
 SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1"})
@@ -37,6 +62,7 @@ REQUIRED_FIELDS = frozenset(
         "hash",
     }
 )
+_HEX_HASH = re.compile(r"[0-9a-f]{64}")
 
 
 def canonical_form(payload: dict) -> str:
@@ -58,6 +84,31 @@ def content_hash(payload: dict) -> str:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _schema_violation(payload: dict) -> str | None:
+    """Return the first schema-0.1 violation, or None if the payload conforms."""
+    for key in ("subject", "decision", "timestamp", "schema_version"):
+        if not isinstance(payload[key], str):
+            return f"invalid {key} type"
+    for key in ("positions", "dissent", "evidence"):
+        if not isinstance(payload[key], list) or not all(
+            isinstance(item, dict) for item in payload[key]
+        ):
+            return f"invalid {key} structure"
+    confidence = payload["confidence"]
+    if isinstance(confidence, bool) or not isinstance(confidence, int | float):
+        return "invalid confidence type"
+    if not 0 <= confidence <= 1:
+        return "confidence out of range"
+    for key in ("hash", "prev_hash"):
+        if not isinstance(payload[key], str) or not _HEX_HASH.fullmatch(payload[key]):
+            return f"invalid {key} format"
+    try:
+        datetime.fromisoformat(payload["timestamp"])
+    except ValueError:
+        return "invalid timestamp"
+    return None
 
 
 @dataclass
@@ -95,6 +146,7 @@ class VerifyResult:
     count: int
     broken_at: int | None = None
     reason: str | None = None
+    anchored: bool = False
 
 
 class DecisionLog:
@@ -103,30 +155,36 @@ class DecisionLog:
     def __init__(self, path: Path | str):
         self.path = Path(path)
 
+    @property
+    def head_path(self) -> Path:
+        """Checkpoint recording the expected record count and terminal hash."""
+        return self.path.with_name(self.path.name + ".head")
+
     def append(self, record: DecisionRecord) -> DecisionRecord:
         """Append a record, holding an exclusive lock across read-chain-tip + write.
 
         Without the lock, two writers could read the same predecessor hash and
-        fork the chain; the lock serializes the whole read-modify-append.
+        fork the chain; the lock serializes the whole read-modify-append. The
+        head checkpoint is updated atomically after the record lands.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                record.prev_hash = self._last_hash()
-                record.hash = record.compute_hash()
+        with self._locked():
+            record.prev_hash, count = self._chain_tip()
+            record.hash = record.compute_hash()
+            with self.path.open("a", encoding="utf-8") as f:
                 f.write(record.to_line() + "\n")
                 f.flush()
                 os.fsync(f.fileno())
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+            self._write_head(count + 1, record.hash)
         return record
 
     def verify(self) -> VerifyResult:
         """Walk the log, checking schema, every content hash, and every chain link.
 
-        Verification works on the raw JSON objects (not the dataclass) so that
-        records carrying unknown future fields still hash exactly as written.
+        Works on the raw JSON objects (not the dataclass) so records carrying
+        unknown future fields hash exactly as written. When the head checkpoint
+        is present the terminal hash and count are checked against it, which
+        detects tail truncation; without it the result is reported unanchored.
         """
         prev = GENESIS_HASH
         count = 0
@@ -145,6 +203,9 @@ class DecisionLog:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="unsupported schema version"
                 )
+            violation = _schema_violation(payload)
+            if violation is not None:
+                return VerifyResult(ok=False, count=count, broken_at=index, reason=violation)
             if payload["prev_hash"] != prev:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="broken chain link"
@@ -155,7 +216,21 @@ class DecisionLog:
                 )
             prev = payload["hash"]
             count += 1
-        return VerifyResult(ok=True, count=count)
+
+        if not self.head_path.exists():
+            return VerifyResult(ok=True, count=count, anchored=False)
+        try:
+            head = json.loads(self.head_path.read_text(encoding="utf-8"))
+            expected_count, expected_hash = head["count"], head["head_hash"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
+        if expected_count != count or expected_hash != prev:
+            return VerifyResult(
+                ok=False,
+                count=count,
+                reason="head checkpoint mismatch (possible truncation)",
+            )
+        return VerifyResult(ok=True, count=count, anchored=True)
 
     def __iter__(self) -> Iterator[DecisionRecord]:
         for line in self._lines():
@@ -169,10 +244,30 @@ class DecisionLog:
                 if line.strip():
                     yield line
 
-    def _last_hash(self) -> str:
+    def _chain_tip(self) -> tuple[str, int]:
         last = None
+        count = 0
         for line in self._lines():
             last = line
+            count += 1
         if last is None:
-            return GENESIS_HASH
-        return json.loads(last)["hash"]
+            return GENESIS_HASH, 0
+        return json.loads(last)["hash"], count
+
+    def _write_head(self, count: int, head_hash: str) -> None:
+        tmp = self.head_path.with_name(self.head_path.name + ".tmp")
+        tmp.write_text(
+            json.dumps({"count": count, "head_hash": head_hash}, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(tmp, self.head_path)
+
+    @contextmanager
+    def _locked(self):
+        lock_path = self.path.with_name(self.path.name + ".lock")
+        with lock_path.open("a+") as lock:
+            _lock_file(lock)
+            try:
+                yield
+            finally:
+                _unlock_file(lock)

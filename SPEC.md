@@ -52,14 +52,38 @@ A verifier walks the file in order and, for each record, checks:
 2. `schema_version` is a version this verifier supports
    (else: **unsupported schema version** — a verifier must not certify a
    record it cannot interpret),
-3. `prev_hash` equals the previous record's `hash` — genesis hash for the
+3. every field conforms to its declared type and constraints — strings are
+   strings, `positions`/`dissent`/`evidence` are arrays of objects,
+   `confidence` is a number in 0–1, hashes are 64 lowercase hex characters,
+   `timestamp` parses as ISO 8601 (else: a specific violation reason),
+4. `prev_hash` equals the previous record's `hash` — genesis hash for the
    first record (else: **broken chain link**),
-4. recomputing the canonical-form hash reproduces `hash`
-   (else: **content hash mismatch**).
+5. recomputing the canonical-form hash reproduces `hash`
+   (else: **content hash mismatch**),
+6. if a head checkpoint is present, the record count and terminal hash match
+   it (else: **head checkpoint mismatch (possible truncation)**).
 
 Verification fails at the first violation, reporting the zero-based record
 index and the reason. An empty or missing file verifies as intact with zero
 records.
+
+## Head checkpoint and trust model
+
+The chain alone cannot detect **tail truncation**: deleting the final record
+(or replacing the log with any earlier prefix) leaves a chain that is
+internally valid. Conforming writers therefore maintain a sidecar checkpoint,
+`<log>.head`, a JSON object `{"count": N, "head_hash": "..."}` updated
+atomically after every append. A verification that confirmed the checkpoint
+is reported as **anchored**; without a checkpoint it is **unanchored** and
+truncation is not detectable.
+
+Be honest about the trust model: the checkpoint lives in the same directory
+as the log, so an attacker who can rewrite both can still truncate silently.
+The checkpoint defends against accidental truncation and unsophisticated
+tampering; for a hard guarantee, anchor the head hash *outside* the log's
+trust domain — commit it to version control, publish it, or send it to an
+external timestamping service. Anchoring cadence and transport are
+deliberately out of scope for `0.1`.
 
 ```bash
 uv run caucus verify path/to/decisions.jsonl

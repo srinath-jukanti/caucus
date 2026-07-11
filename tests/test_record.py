@@ -25,6 +25,12 @@ def log(tmp_path):
     return DecisionLog(tmp_path / "decisions.jsonl")
 
 
+def rewrite_single_record(log, payload):
+    """Rewrite a one-record log the way a conforming writer would — checkpoint included."""
+    log.path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    log.head_path.write_text(json.dumps({"count": 1, "head_hash": payload["hash"]}))
+
+
 def test_chain_links_records(log):
     first = log.append(make_record())
     second = log.append(make_record(subject="Add NVDA?"))
@@ -38,6 +44,7 @@ def test_verify_intact_log(log):
     result = log.verify()
     assert result.ok
     assert result.count == 3
+    assert result.anchored
 
 
 def test_verify_empty_log(log):
@@ -101,11 +108,51 @@ def test_verify_tolerates_unknown_fields(log):
     payload = json.loads(log.path.read_text())
     payload["future_field"] = "added by a later 0.x version"
     payload["hash"] = content_hash(payload)
-    log.path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    rewrite_single_record(log, payload)
     result = log.verify()
     assert result.ok
     assert result.count == 1
     assert next(iter(log)).subject == "Trim QQQ?"
+
+
+def test_verify_detects_tail_truncation(log):
+    for i in range(3):
+        log.append(make_record(subject=f"subject {i}"))
+    lines = log.path.read_text().splitlines()
+    log.path.write_text("\n".join(lines[:-1]) + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "head checkpoint mismatch (possible truncation)"
+
+
+def test_verify_without_checkpoint_is_unanchored(log):
+    log.append(make_record())
+    log.head_path.unlink()
+    result = log.verify()
+    assert result.ok
+    assert not result.anchored
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        ({"confidence": 1.5}, "confidence out of range"),
+        ({"confidence": "high"}, "invalid confidence type"),
+        ({"timestamp": "not-a-timestamp"}, "invalid timestamp"),
+        ({"positions": "not-a-list"}, "invalid positions structure"),
+        ({"prev_hash": "abc"}, "invalid prev_hash format"),
+    ],
+)
+def test_verify_enforces_schema(log, mutation, reason):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload.update(mutation)
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == reason
 
 
 def test_concurrent_appends_keep_chain_intact(log):
