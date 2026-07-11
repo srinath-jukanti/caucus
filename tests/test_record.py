@@ -225,6 +225,32 @@ def test_append_refuses_truncated_log(log):
     assert log.head_path.read_text() == head_before
 
 
+def test_spec_golden_vector():
+    """Pins the SPEC.md test vector — a serialization change here breaks all hashes."""
+    record = DecisionRecord(
+        subject="Ship v0.1? — héllo",
+        decision="yes",
+        confidence=0.8,
+        positions=[{"agent": "a1", "stance": "yes", "summary": "ready", "confidence": 1.0}],
+        dissent=[],
+        evidence=[{"source": "spec", "ref": "SPEC.md"}],
+        timestamp="2026-07-11T00:00:00+00:00",
+    )
+    assert (
+        record.compute_hash() == "06624a603d2f031db60ad142d28addd8f3483d08ebfc2be16e140753d9bc221d"
+    )
+
+
+def test_verify_reports_invalid_encoding(log):
+    log.append(make_record())
+    with log.path.open("ab") as f:
+        f.write(b'{"subject": "\xff\xfe"}\n')
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 1
+    assert result.reason == "invalid encoding"
+
+
 def test_concurrent_appends_keep_chain_intact(log):
     def worker(i):
         # Each append opens its own handle, so the file lock is what serializes them.

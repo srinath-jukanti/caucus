@@ -229,30 +229,34 @@ class DecisionLog:
         """
         prev = GENESIS_HASH
         count = 0
-        for index, line in enumerate(self._lines()):
-            try:
-                payload = json.loads(line)
-            except json.JSONDecodeError:
-                return VerifyResult(
-                    ok=False, count=count, broken_at=index, reason="malformed record"
-                )
-            if not isinstance(payload, dict):
-                return VerifyResult(
-                    ok=False, count=count, broken_at=index, reason="malformed record"
-                )
-            violation = _record_violation(payload)
-            if violation is not None:
-                return VerifyResult(ok=False, count=count, broken_at=index, reason=violation)
-            if payload["prev_hash"] != prev:
-                return VerifyResult(
-                    ok=False, count=count, broken_at=index, reason="broken chain link"
-                )
-            if content_hash(payload) != payload["hash"]:
-                return VerifyResult(
-                    ok=False, count=count, broken_at=index, reason="content hash mismatch"
-                )
-            prev = payload["hash"]
-            count += 1
+        try:
+            for index, line in enumerate(self._lines()):
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="malformed record"
+                    )
+                if not isinstance(payload, dict):
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="malformed record"
+                    )
+                violation = _record_violation(payload)
+                if violation is not None:
+                    return VerifyResult(ok=False, count=count, broken_at=index, reason=violation)
+                if payload["prev_hash"] != prev:
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="broken chain link"
+                    )
+                if content_hash(payload) != payload["hash"]:
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="content hash mismatch"
+                    )
+                prev = payload["hash"]
+                count += 1
+        except UnicodeDecodeError:
+            # Damaged/tampered bytes must yield a structured failure, not a crash.
+            return VerifyResult(ok=False, count=count, broken_at=count, reason="invalid encoding")
 
         if not self.head_path.exists():
             return VerifyResult(ok=True, count=count, anchored=False)

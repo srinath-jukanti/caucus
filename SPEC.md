@@ -31,8 +31,61 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 ## Canonical form and hashing
 
 The canonical form of a record is the JSON serialization of all fields
-**except `hash`**, with keys sorted lexicographically and no whitespace
-(separators `,` and `:`).
+**except `hash`**, produced under this profile — every detail is normative,
+because a single serialization difference changes the hash:
+
+- keys sorted lexicographically by Unicode code point,
+- separators `,` and `:` with no whitespace,
+- non-ASCII characters escaped as `\uXXXX` with lowercase hex digits (the
+  canonical form is pure ASCII),
+- strings escaped per RFC 8259, using the short escapes (`\n`, `\"`, `\\`)
+  where they exist,
+- numbers written in shortest-round-trip IEEE-754 double form, keeping a
+  trailing `.0` for integral floats (`0.8`, `1.0` — not `1`); non-finite
+  numbers (NaN, Infinity) are not permitted anywhere in a record,
+- the SHA-256 input is the UTF-8 (equivalently ASCII) encoding of that
+  string.
+
+This matches Python's `json.dumps(payload, sort_keys=True,
+separators=(",", ":"))` for conforming records; implementations in languages
+whose default JSON serializers differ (e.g. JavaScript emits `1` and literal
+Unicode) must implement this profile explicitly — as with any
+canonicalization scheme. Migration to RFC 8785 (JCS) is under consideration
+for a future schema version; it would change hashes and therefore requires a
+`schema_version` bump.
+
+### Test vector
+
+The record below (shown pretty-printed for readability) with
+`prev_hash = "0" * 64`:
+
+```json
+{
+  "subject": "Ship v0.1? — héllo",
+  "decision": "yes",
+  "confidence": 0.8,
+  "positions": [{"agent": "a1", "stance": "yes", "summary": "ready", "confidence": 1.0}],
+  "dissent": [],
+  "evidence": [{"source": "spec", "ref": "SPEC.md"}],
+  "timestamp": "2026-07-11T00:00:00+00:00",
+  "schema_version": "0.1"
+}
+```
+
+has the canonical form:
+
+```
+{"confidence":0.8,"decision":"yes","dissent":[],"evidence":[{"ref":"SPEC.md","source":"spec"}],"positions":[{"agent":"a1","confidence":1.0,"stance":"yes","summary":"ready"}],"prev_hash":"0000000000000000000000000000000000000000000000000000000000000000","schema_version":"0.1","subject":"Ship v0.1? \u2014 h\u00e9llo","timestamp":"2026-07-11T00:00:00+00:00"}
+```
+
+and the hash:
+
+```
+06624a603d2f031db60ad142d28addd8f3483d08ebfc2be16e140753d9bc221d
+```
+
+An implementation that reproduces this hash conforms to the profile; the
+reference test suite pins it (`test_spec_golden_vector`).
 
 ```
 hash = SHA-256(canonical_form)          # lowercase hex
@@ -47,7 +100,8 @@ chain link. That is the entire tamper-evidence argument.
 
 A verifier walks the file in order and, for each record, checks:
 
-1. the line parses as a JSON object containing every field in the table above
+1. the line decodes as UTF-8 (else: **invalid encoding**) and parses as a
+   JSON object containing every field in the table above
    (else: **malformed record**),
 2. `schema_version` is a version this verifier supports
    (else: **unsupported schema version** — a verifier must not certify a
