@@ -103,6 +103,21 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    """object_pairs_hook: parsers disagree on duplicate-key resolution (first- vs
+    last-wins), so a duplicate would give one hashed record multiple readings."""
+    obj: dict = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate key: {key}")
+        obj[key] = value
+    return obj
+
+
+def _parse_strict(text: str) -> dict:
+    return json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+
+
 def _schema_violation(payload: dict) -> str | None:
     """Return the first schema-0.1 violation, or None if the payload conforms."""
     for key in ("subject", "decision", "timestamp", "schema_version"):
@@ -177,7 +192,7 @@ class DecisionRecord:
     @classmethod
     def from_line(cls, line: str) -> DecisionRecord:
         """Parse a record line, tolerating unknown fields from future minor versions."""
-        data = json.loads(line)
+        data = _parse_strict(line)
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in known})
 
@@ -250,10 +265,14 @@ class DecisionLog:
         try:
             for index, line in enumerate(self._lines()):
                 try:
-                    payload = json.loads(line)
+                    payload = _parse_strict(line)
                 except json.JSONDecodeError:
                     return VerifyResult(
                         ok=False, count=count, broken_at=index, reason="malformed record"
+                    )
+                except ValueError:
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="duplicate key"
                     )
                 if not isinstance(payload, dict):
                     return VerifyResult(
@@ -279,9 +298,10 @@ class DecisionLog:
         if not self.head_path.exists():
             return VerifyResult(ok=True, count=count, anchored=False)
         try:
-            head = json.loads(self.head_path.read_text(encoding="utf-8"))
+            head = _parse_strict(self.head_path.read_text(encoding="utf-8"))
             expected_count, expected_hash = head["count"], head["head_hash"]
-        except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
+        except (ValueError, KeyError, TypeError):
+            # ValueError covers JSONDecodeError, UnicodeDecodeError, and duplicate keys.
             return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
         if expected_count != count or expected_hash != prev:
             return VerifyResult(

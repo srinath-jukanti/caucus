@@ -102,7 +102,10 @@ A verifier walks the file in order and, for each record, checks:
 
 1. the line decodes as UTF-8 (else: **invalid encoding**) and parses as a
    JSON object containing every field in the table above
-   (else: **malformed record**),
+   (else: **malformed record**); no object at any level may contain
+   duplicate keys — JSON parsers disagree on duplicate-key resolution, so a
+   duplicate would give one hashed record multiple readings
+   (else: **duplicate key**),
 2. `schema_version` is a version this verifier supports
    (else: **unsupported schema version** — a verifier must not certify a
    record it cannot interpret),

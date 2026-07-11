@@ -225,6 +225,29 @@ def test_append_refuses_truncated_log(log):
     assert log.head_path.read_text() == head_before
 
 
+def test_verify_rejects_duplicate_keys(log):
+    log.append(make_record())
+    line = log.path.read_text().rstrip("\n")
+    # Smuggle an earlier duplicate: last-wins parsers keep the original value,
+    # so the hash still matches — only duplicate-key rejection catches this.
+    log.path.write_text('{"decision":"altered",' + line[1:] + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == "duplicate key"
+
+
+def test_verify_rejects_nested_duplicate_keys(log):
+    log.append(make_record())
+    line = log.path.read_text().rstrip("\n")
+    smuggled = line.replace('{"agent":"macro"', '{"agent":"smuggled","agent":"macro"', 1)
+    assert smuggled != line
+    log.path.write_text(smuggled + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "duplicate key"
+
+
 def test_verify_reports_checkpoint_with_invalid_encoding(log):
     log.append(make_record())
     log.head_path.write_bytes(b"\xff\xfe")
