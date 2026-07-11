@@ -21,7 +21,7 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, fields
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 try:  # POSIX
@@ -65,6 +65,10 @@ REQUIRED_FIELDS = frozenset(
 _HEX_HASH = re.compile(r"[0-9a-f]{64}")
 
 
+class LogIntegrityError(RuntimeError):
+    """Raised when appending to a log whose existing content fails verification."""
+
+
 def canonical_form(payload: dict) -> str:
     """Deterministic serialization of a record payload, excluding the hash itself.
 
@@ -96,19 +100,31 @@ def _schema_violation(payload: dict) -> str | None:
             isinstance(item, dict) for item in payload[key]
         ):
             return f"invalid {key} structure"
-    confidence = payload["confidence"]
-    if isinstance(confidence, bool) or not isinstance(confidence, int | float):
-        return "invalid confidence type"
-    if not 0 <= confidence <= 1:
-        return "confidence out of range"
+    for key in ("positions", "dissent"):
+        for entry in payload[key]:
+            if any(not isinstance(entry.get(k), str) for k in ("agent", "stance", "summary")):
+                return f"invalid {key} entry"
+            if not _valid_confidence(entry.get("confidence")):
+                return f"invalid {key} entry"
+    for entry in payload["evidence"]:
+        if not isinstance(entry.get("source"), str) or not isinstance(entry.get("ref"), str):
+            return "invalid evidence entry"
+    if not _valid_confidence(payload["confidence"]):
+        return "invalid confidence"
     for key in ("hash", "prev_hash"):
         if not isinstance(payload[key], str) or not _HEX_HASH.fullmatch(payload[key]):
             return f"invalid {key} format"
     try:
-        datetime.fromisoformat(payload["timestamp"])
+        parsed = datetime.fromisoformat(payload["timestamp"])
     except ValueError:
         return "invalid timestamp"
+    if parsed.utcoffset() != timedelta(0):
+        return "timestamp not UTC"
     return None
+
+
+def _valid_confidence(value) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int | float) and 0 <= value <= 1
 
 
 @dataclass
@@ -165,10 +181,21 @@ class DecisionLog:
 
         Without the lock, two writers could read the same predecessor hash and
         fork the chain; the lock serializes the whole read-modify-append. The
-        head checkpoint is updated atomically after the record lands.
+        existing log (including its checkpoint) is verified first — appending
+        to a truncated or tampered log would overwrite the checkpoint and
+        launder the integrity failure, so it is refused instead. The head
+        checkpoint is updated atomically after the record lands.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._locked():
+            existing = self.verify()
+            if not existing.ok:
+                raise LogIntegrityError(
+                    f"refusing to append: existing log fails verification "
+                    f"({existing.reason}"
+                    + (f", record {existing.broken_at}" if existing.broken_at is not None else "")
+                    + ")"
+                )
             record.prev_hash, count = self._chain_tip()
             record.hash = record.compute_hash()
             with self.path.open("a", encoding="utf-8") as f:

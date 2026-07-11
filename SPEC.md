@@ -18,13 +18,13 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 | Field | Type | Meaning |
 |---|---|---|
 | `schema_version` | string | `"0.1"` |
-| `timestamp` | string | ISO 8601, UTC |
+| `timestamp` | string | ISO 8601 with an explicit UTC offset (`Z` or `+00:00`); naive or non-UTC timestamps do not conform |
 | `subject` | string | what was deliberated |
-| `positions` | array of objects | one per agent: `{agent, stance, summary, confidence}` |
+| `positions` | array of objects | one per agent: `agent`, `stance`, `summary` (strings) and `confidence` (number, 0–1) |
 | `decision` | string | the consensus outcome |
-| `dissent` | array of objects | positions that disagreed with the outcome — recorded, never dropped |
+| `dissent` | array of objects | positions that disagreed with the outcome — same entry shape as `positions`, recorded, never dropped |
 | `confidence` | number | consensus confidence, 0–1 |
-| `evidence` | array of objects | `{source, ref}` citations grounding the decision |
+| `evidence` | array of objects | citations grounding the decision: `source` and `ref` (strings) |
 | `prev_hash` | string | hex SHA-256 of the previous record; genesis is 64 zeros |
 | `hash` | string | hex SHA-256 of this record's canonical form |
 
@@ -53,9 +53,11 @@ A verifier walks the file in order and, for each record, checks:
    (else: **unsupported schema version** — a verifier must not certify a
    record it cannot interpret),
 3. every field conforms to its declared type and constraints — strings are
-   strings, `positions`/`dissent`/`evidence` are arrays of objects,
-   `confidence` is a number in 0–1, hashes are 64 lowercase hex characters,
-   `timestamp` parses as ISO 8601 (else: a specific violation reason),
+   strings, `positions`/`dissent` entries carry string `agent`/`stance`/
+   `summary` and a 0–1 `confidence`, `evidence` entries carry string
+   `source`/`ref`, `confidence` is a number in 0–1, hashes are 64 lowercase
+   hex characters, and `timestamp` parses as ISO 8601 with a UTC offset
+   (else: a specific violation reason),
 4. `prev_hash` equals the previous record's `hash` — genesis hash for the
    first record (else: **broken chain link**),
 5. recomputing the canonical-form hash reproduces `hash`
@@ -76,6 +78,13 @@ internally valid. Conforming writers therefore maintain a sidecar checkpoint,
 atomically after every append. A verification that confirmed the checkpoint
 is reported as **anchored**; without a checkpoint it is **unanchored** and
 truncation is not detectable.
+
+Writers must **verify before appending** and refuse to extend a log that
+fails verification — otherwise an append after truncation would rewrite the
+checkpoint and launder the failure. Recovery from a legitimately damaged log
+(e.g. an interrupted append leaving a stale checkpoint) is a deliberate
+manual act: investigate, then remove the checkpoint; the next append
+re-anchors the log as it stands.
 
 Be honest about the trust model: the checkpoint lives in the same directory
 as the log, so an attacker who can rewrite both can still truncate silently.

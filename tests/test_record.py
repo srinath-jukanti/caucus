@@ -3,7 +3,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from caucus.record import GENESIS_HASH, DecisionLog, DecisionRecord, content_hash
+from caucus.record import (
+    GENESIS_HASH,
+    DecisionLog,
+    DecisionRecord,
+    LogIntegrityError,
+    content_hash,
+)
 
 
 def make_record(subject="Trim QQQ?", decision="yes"):
@@ -136,10 +142,21 @@ def test_verify_without_checkpoint_is_unanchored(log):
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        ({"confidence": 1.5}, "confidence out of range"),
-        ({"confidence": "high"}, "invalid confidence type"),
+        ({"confidence": 1.5}, "invalid confidence"),
+        ({"confidence": "high"}, "invalid confidence"),
         ({"timestamp": "not-a-timestamp"}, "invalid timestamp"),
+        ({"timestamp": "2026-07-11T00:00:00"}, "timestamp not UTC"),
+        ({"timestamp": "2026-07-11T00:00:00+05:30"}, "timestamp not UTC"),
         ({"positions": "not-a-list"}, "invalid positions structure"),
+        (
+            {"positions": [{"stance": "yes", "summary": "s", "confidence": 0.5}]},
+            "invalid positions entry",
+        ),
+        (
+            {"dissent": [{"agent": "a", "stance": "no", "summary": "s", "confidence": "high"}]},
+            "invalid dissent entry",
+        ),
+        ({"evidence": [{"source": "quotes"}]}, "invalid evidence entry"),
         ({"prev_hash": "abc"}, "invalid prev_hash format"),
     ],
 )
@@ -153,6 +170,26 @@ def test_verify_enforces_schema(log, mutation, reason):
     assert not result.ok
     assert result.broken_at == 0
     assert result.reason == reason
+
+
+def test_verify_accepts_zulu_timestamp(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["timestamp"] = "2026-07-11T00:00:00Z"
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    assert log.verify().ok
+
+
+def test_append_refuses_truncated_log(log):
+    for i in range(3):
+        log.append(make_record(subject=f"subject {i}"))
+    head_before = log.head_path.read_text()
+    lines = log.path.read_text().splitlines()
+    log.path.write_text("\n".join(lines[:-1]) + "\n")
+    with pytest.raises(LogIntegrityError):
+        log.append(make_record(subject="laundered"))
+    assert log.head_path.read_text() == head_before
 
 
 def test_concurrent_appends_keep_chain_intact(log):
