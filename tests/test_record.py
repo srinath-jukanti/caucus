@@ -181,6 +181,39 @@ def test_verify_accepts_zulu_timestamp(log):
     assert log.verify().ok
 
 
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda r: setattr(r, "confidence", 2.0),
+        lambda r: setattr(r, "timestamp", "2026-07-11T00:00:00"),
+        lambda r: setattr(r, "schema_version", "9.0"),
+        lambda r: setattr(r, "positions", [{"stance": "yes"}]),
+    ],
+)
+def test_append_rejects_invalid_record(log, spoil):
+    log.append(make_record())
+    log_before = log.path.read_text()
+    head_before = log.head_path.read_text()
+    bad = make_record()
+    spoil(bad)
+    with pytest.raises(ValueError, match="invalid record"):
+        log.append(bad)
+    assert log.path.read_text() == log_before
+    assert log.head_path.read_text() == head_before
+
+
+def test_verify_reports_unhashable_schema_version(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["schema_version"] = ["0.1"]
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == "invalid schema_version type"
+
+
 def test_append_refuses_truncated_log(log):
     for i in range(3):
         log.append(make_record(subject=f"subject {i}"))

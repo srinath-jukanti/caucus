@@ -127,6 +127,17 @@ def _valid_confidence(value) -> bool:
     return not isinstance(value, bool) and isinstance(value, int | float) and 0 <= value <= 1
 
 
+def _record_violation(payload: dict) -> str | None:
+    """Full record validation, shared by the writer and the verifier."""
+    if not REQUIRED_FIELDS <= payload.keys():
+        return "malformed record"
+    if not isinstance(payload["schema_version"], str):
+        return "invalid schema_version type"
+    if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+        return "unsupported schema version"
+    return _schema_violation(payload)
+
+
 @dataclass
 class DecisionRecord:
     """One deliberation outcome. See SPEC.md for the canonical schema."""
@@ -198,6 +209,9 @@ class DecisionLog:
                 )
             record.prev_hash, count = self._chain_tip()
             record.hash = record.compute_hash()
+            violation = _record_violation(asdict(record))
+            if violation is not None:
+                raise ValueError(f"invalid record: {violation}")
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(record.to_line() + "\n")
                 f.flush()
@@ -222,15 +236,11 @@ class DecisionLog:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="malformed record"
                 )
-            if not isinstance(payload, dict) or not REQUIRED_FIELDS <= payload.keys():
+            if not isinstance(payload, dict):
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="malformed record"
                 )
-            if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
-                return VerifyResult(
-                    ok=False, count=count, broken_at=index, reason="unsupported schema version"
-                )
-            violation = _schema_violation(payload)
+            violation = _record_violation(payload)
             if violation is not None:
                 return VerifyResult(ok=False, count=count, broken_at=index, reason=violation)
             if payload["prev_hash"] != prev:
