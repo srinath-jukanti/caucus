@@ -225,6 +225,28 @@ def test_append_refuses_truncated_log(log):
     assert log.head_path.read_text() == head_before
 
 
+def test_append_rejects_non_finite_numbers(log):
+    log.append(make_record())
+    log_before = log.path.read_text()
+    bad = make_record()
+    bad.evidence = [{"source": "quotes", "ref": "x", "weight": float("nan")}]
+    with pytest.raises(ValueError, match="non-finite number"):
+        log.append(bad)
+    assert log.path.read_text() == log_before
+
+
+def test_verify_rejects_non_finite_numbers(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["future_field"] = float("inf")
+    # Simulates a hostile writer: stdlib dumps emits the non-standard Infinity token.
+    log.path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == "non-finite number"
+
+
 def test_spec_golden_vector():
     """Pins the SPEC.md test vector — a serialization change here breaks all hashes."""
     record = DecisionRecord(

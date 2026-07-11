@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from collections.abc import Iterator
@@ -79,11 +80,23 @@ def canonical_form(payload: dict) -> str:
         {k: v for k, v in payload.items() if k != "hash"},
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     )
 
 
 def content_hash(payload: dict) -> str:
     return hashlib.sha256(canonical_form(payload).encode()).hexdigest()
+
+
+def _has_non_finite(value) -> bool:
+    """SPEC forbids NaN/Infinity anywhere — they are not valid JSON and hash non-portably."""
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_has_non_finite(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_non_finite(v) for v in value)
+    return False
 
 
 def _utc_now() -> str:
@@ -131,6 +144,8 @@ def _record_violation(payload: dict) -> str | None:
     """Full record validation, shared by the writer and the verifier."""
     if not REQUIRED_FIELDS <= payload.keys():
         return "malformed record"
+    if _has_non_finite(payload):
+        return "non-finite number"
     if not isinstance(payload["schema_version"], str):
         return "invalid schema_version type"
     if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
@@ -157,7 +172,7 @@ class DecisionRecord:
         return content_hash(asdict(self))
 
     def to_line(self) -> str:
-        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
     @classmethod
     def from_line(cls, line: str) -> DecisionRecord:
@@ -208,6 +223,9 @@ class DecisionLog:
                     + ")"
                 )
             record.prev_hash, count = self._chain_tip()
+            if _has_non_finite(asdict(record)):
+                # Checked before hashing — canonical_form would refuse to serialize it.
+                raise ValueError("invalid record: non-finite number")
             record.hash = record.compute_hash()
             violation = _record_violation(asdict(record))
             if violation is not None:

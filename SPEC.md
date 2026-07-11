@@ -110,8 +110,9 @@ A verifier walks the file in order and, for each record, checks:
    strings, `positions`/`dissent` entries carry string `agent`/`stance`/
    `summary` and a 0–1 `confidence`, `evidence` entries carry string
    `source`/`ref`, `confidence` is a number in 0–1, hashes are 64 lowercase
-   hex characters, and `timestamp` parses as ISO 8601 with a UTC offset
-   (else: a specific violation reason),
+   hex characters, `timestamp` parses as ISO 8601 with a UTC offset, and no
+   non-finite number (NaN/Infinity) appears anywhere in the record, known
+   fields or not (else: a specific violation reason),
 4. `prev_hash` equals the previous record's `hash` — genesis hash for the
    first record (else: **broken chain link**),
 5. recomputing the canonical-form hash reproduces `hash`
