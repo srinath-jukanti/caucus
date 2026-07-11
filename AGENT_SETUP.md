@@ -15,7 +15,7 @@ Set up the Caucus multi-agent deliberation framework for me on this machine.
 1. Verify prerequisites, installing anything missing:
    - `uv` (install via `curl -LsSf https://astral.sh/uv/install.sh | sh` if absent)
    - `git`
-2. Clone https://github.com/SJ1989/caucus.git into a sensible projects
+2. Clone https://github.com/srinath-jukanti/caucus.git into a sensible projects
    directory (ask me if unsure), then run `uv sync` inside it.
 3. Verify the install: `uv run caucus version` must print a version, and
    `uv run pytest -q` must pass. If either fails, diagnose and fix before
