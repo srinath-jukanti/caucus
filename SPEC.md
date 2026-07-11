@@ -9,7 +9,9 @@ records by conforming to it; the reference implementation is
 
 A decision log is a UTF-8 [JSON Lines](https://jsonlines.org) file. Each
 non-empty line is one decision record. The file is **append-only**: conforming
-writers never rewrite, reorder, or delete lines.
+writers never rewrite, reorder, or delete lines, and must serialize appends
+(the reference implementation holds an exclusive advisory file lock across
+read-chain-tip + write, so concurrent writers cannot fork the chain).
 
 ## Record fields
 
@@ -45,10 +47,14 @@ chain link. That is the entire tamper-evidence argument.
 
 A verifier walks the file in order and, for each record, checks:
 
-1. the line parses as a record (else: **malformed record**),
-2. `prev_hash` equals the previous record's `hash` — genesis hash for the
+1. the line parses as a JSON object containing every field in the table above
+   (else: **malformed record**),
+2. `schema_version` is a version this verifier supports
+   (else: **unsupported schema version** — a verifier must not certify a
+   record it cannot interpret),
+3. `prev_hash` equals the previous record's `hash` — genesis hash for the
    first record (else: **broken chain link**),
-3. recomputing the canonical-form hash reproduces `hash`
+4. recomputing the canonical-form hash reproduces `hash`
    (else: **content hash mismatch**).
 
 Verification fails at the first violation, reporting the zero-based record
@@ -62,5 +68,6 @@ uv run caucus verify path/to/decisions.jsonl
 ## Stability
 
 Fields may be added in future minor versions; existing fields will not be
-renamed or removed within `0.x`. Verifiers must ignore unknown fields when
-hashing is delegated to the canonical form (which includes them naturally).
+renamed or removed within `0.x`. Verifiers must operate on the raw JSON
+object so unknown fields participate in canonical hashing exactly as
+written; readers may ignore unknown fields when materializing records.

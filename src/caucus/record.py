@@ -4,19 +4,56 @@ Two guarantees, enforced by construction:
 - nothing can be silently altered: each record's hash covers its content;
 - nothing can be silently removed: each record embeds its predecessor's hash,
   so deleting a line breaks the successor's link.
+
+Appends are serialized with an advisory file lock so concurrent writers
+cannot fork the chain.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
+import os
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA_VERSION = "0.1"
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1"})
 GENESIS_HASH = "0" * 64
+REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "timestamp",
+        "subject",
+        "positions",
+        "decision",
+        "dissent",
+        "confidence",
+        "evidence",
+        "prev_hash",
+        "hash",
+    }
+)
+
+
+def canonical_form(payload: dict) -> str:
+    """Deterministic serialization of a record payload, excluding the hash itself.
+
+    Operates on the raw JSON object so unknown fields added by future minor
+    versions participate in hashing, as SPEC.md requires.
+    """
+    return json.dumps(
+        {k: v for k, v in payload.items() if k != "hash"},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def content_hash(payload: dict) -> str:
+    return hashlib.sha256(canonical_form(payload).encode()).hexdigest()
 
 
 def _utc_now() -> str:
@@ -38,20 +75,18 @@ class DecisionRecord:
     prev_hash: str = GENESIS_HASH
     hash: str = ""
 
-    def canonical(self) -> str:
-        """Deterministic serialization of everything except the hash itself."""
-        payload = {k: v for k, v in asdict(self).items() if k != "hash"}
-        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
     def compute_hash(self) -> str:
-        return hashlib.sha256(self.canonical().encode()).hexdigest()
+        return content_hash(asdict(self))
 
     def to_line(self) -> str:
         return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
 
     @classmethod
     def from_line(cls, line: str) -> DecisionRecord:
-        return cls(**json.loads(line))
+        """Parse a record line, tolerating unknown fields from future minor versions."""
+        data = json.loads(line)
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @dataclass
@@ -69,34 +104,56 @@ class DecisionLog:
         self.path = Path(path)
 
     def append(self, record: DecisionRecord) -> DecisionRecord:
-        record.prev_hash = self._last_hash()
-        record.hash = record.compute_hash()
+        """Append a record, holding an exclusive lock across read-chain-tip + write.
+
+        Without the lock, two writers could read the same predecessor hash and
+        fork the chain; the lock serializes the whole read-modify-append.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
-            f.write(record.to_line() + "\n")
-            f.flush()
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                record.prev_hash = self._last_hash()
+                record.hash = record.compute_hash()
+                f.write(record.to_line() + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
         return record
 
     def verify(self) -> VerifyResult:
-        """Walk the log, recomputing every hash and chain link."""
+        """Walk the log, checking schema, every content hash, and every chain link.
+
+        Verification works on the raw JSON objects (not the dataclass) so that
+        records carrying unknown future fields still hash exactly as written.
+        """
         prev = GENESIS_HASH
         count = 0
         for index, line in enumerate(self._lines()):
             try:
-                record = DecisionRecord.from_line(line)
-            except (json.JSONDecodeError, TypeError):
+                payload = json.loads(line)
+            except json.JSONDecodeError:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="malformed record"
                 )
-            if record.prev_hash != prev:
+            if not isinstance(payload, dict) or not REQUIRED_FIELDS <= payload.keys():
+                return VerifyResult(
+                    ok=False, count=count, broken_at=index, reason="malformed record"
+                )
+            if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+                return VerifyResult(
+                    ok=False, count=count, broken_at=index, reason="unsupported schema version"
+                )
+            if payload["prev_hash"] != prev:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="broken chain link"
                 )
-            if record.compute_hash() != record.hash:
+            if content_hash(payload) != payload["hash"]:
                 return VerifyResult(
                     ok=False, count=count, broken_at=index, reason="content hash mismatch"
                 )
-            prev = record.hash
+            prev = payload["hash"]
             count += 1
         return VerifyResult(ok=True, count=count)
 
@@ -118,4 +175,4 @@ class DecisionLog:
             last = line
         if last is None:
             return GENESIS_HASH
-        return DecisionRecord.from_line(last).hash
+        return json.loads(last)["hash"]

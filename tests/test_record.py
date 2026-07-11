@@ -1,6 +1,9 @@
+import json
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
-from caucus.record import GENESIS_HASH, DecisionLog, DecisionRecord
+from caucus.record import GENESIS_HASH, DecisionLog, DecisionRecord, content_hash
 
 
 def make_record(subject="Trim QQQ?", decision="yes"):
@@ -79,3 +82,39 @@ def test_iteration_preserves_order(log):
     for subject in subjects:
         log.append(make_record(subject=subject))
     assert [r.subject for r in log] == subjects
+
+
+def test_verify_rejects_unsupported_schema_version(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["schema_version"] = "9.0"
+    payload["hash"] = content_hash(payload)
+    log.path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == "unsupported schema version"
+
+
+def test_verify_tolerates_unknown_fields(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["future_field"] = "added by a later 0.x version"
+    payload["hash"] = content_hash(payload)
+    log.path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    result = log.verify()
+    assert result.ok
+    assert result.count == 1
+    assert next(iter(log)).subject == "Trim QQQ?"
+
+
+def test_concurrent_appends_keep_chain_intact(log):
+    def worker(i):
+        # Each append opens its own handle, so the file lock is what serializes them.
+        DecisionLog(log.path).append(make_record(subject=f"subject {i}"))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(worker, range(20)))
+    result = log.verify()
+    assert result.ok
+    assert result.count == 20
