@@ -87,6 +87,14 @@ def test_cli_add_list_update(tmp_path):
     assert "(no intents)" in result.output
 
 
+def test_deliberate_refuses_missing_configured_intents_store(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("intents: missing-intents.db\n")
+    result = runner.invoke(app, ["deliberate", "subject"])
+    assert result.exit_code == 2
+    assert "does not exist" in result.output
+
+
 def test_cli_update_reports_missing_intent(tmp_path):
     db = str(tmp_path / "intents.db")
     result = runner.invoke(app, ["intents", "update", "42", "--db", db, "--status", "done"])

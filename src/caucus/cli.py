@@ -151,8 +151,16 @@ def deliberate(
         if loaded.intents is not None:
             from caucus.intents import IntentStore
 
-            # Standing plans are evidence: a panel with live data but no
-            # knowledge of the plan reaches confidently wrong conclusions.
+            # A mistyped path must not silently become an empty store — a panel
+            # missing its standing plans is confidently wrong, which is the
+            # exact failure this feature exists to prevent.
+            if not loaded.intents.exists():
+                typer.echo(
+                    f"configured intents store {loaded.intents} does not exist — "
+                    "create it with 'caucus intents add'",
+                    err=True,
+                )
+                raise typer.Exit(2)
             items = items + IntentStore(loaded.intents).as_evidence()
     elif backend == "claude":
         agent_backend = ClaudeCodeBackend()
