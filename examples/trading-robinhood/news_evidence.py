@@ -3,6 +3,7 @@
 Always exits 0 with valid JSON — a dead feed becomes a note, not a failure,
 so one outage never blocks the briefing.
 """
+
 import json
 import re
 import urllib.request

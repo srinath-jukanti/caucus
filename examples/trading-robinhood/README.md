@@ -53,9 +53,10 @@ caucus intents add "XYZ exit at breakeven" --direction trim \
 5. **Run**: `caucus briefing` — the agenda's four standing questions are
    deliberated in order, the briefing is rendered and emailed, and every
    decision (with dissent) lands in the hash-chained log.
-6. **Schedule**: adapt `run-caucus.sh` (secrets from an env file) and either
-   the launchd template `com.example.caucus.plist` (macOS) or the cron line
-   in its comments (Linux).
+6. **Schedule**: `mkdir -p ~/caucus-live/logs` first (launchd opens its log
+   path before the script runs), then adapt `run-caucus.sh` (secrets from an
+   env file) and either the launchd template `com.example.caucus.plist`
+   (macOS) or the cron line in its comments (Linux).
 
 Each analyst calls the allowed read-only tools — quotes, historicals,
 portfolio, option chains, scans — and cites what it fetched as evidence.
