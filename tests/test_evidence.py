@@ -39,6 +39,17 @@ def test_non_list_output_aborts():
         collect([EvidenceSource(name="dict", command="echo '{}'")])
 
 
+def test_timeout_kills_the_whole_process_tree():
+    import time
+
+    # The child ('sleep 30') inherits the output pipe; without process-group
+    # kill, the timeout would fire but the read would hang until the child dies.
+    start = time.monotonic()
+    with pytest.raises(EvidenceError, match="timed out"):
+        collect([EvidenceSource(name="hung", command="sleep 30 & sleep 30", timeout_seconds=1)])
+    assert time.monotonic() - start < 10
+
+
 def test_config_parses_evidence_sources(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(

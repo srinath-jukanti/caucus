@@ -11,6 +11,8 @@ evidence.
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 from dataclasses import dataclass
 
@@ -41,23 +43,31 @@ def collect(sources: list[EvidenceSource]) -> list[dict]:
 
 
 def _run(source: EvidenceSource) -> list[dict]:
+    # A new session/process group per source: on timeout the WHOLE tree is
+    # killed — killing only the shell would leave children holding the output
+    # pipes open, hanging the read and defeating the timeout entirely.
+    process = subprocess.Popen(
+        source.command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=hasattr(os, "setsid"),
+    )
     try:
-        result = subprocess.run(
-            source.command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=source.timeout_seconds,
-        )
+        stdout, stderr = process.communicate(timeout=source.timeout_seconds)
     except subprocess.TimeoutExpired as err:
+        _kill_tree(process)
         raise EvidenceError(
             f"evidence source {source.name!r} timed out after {source.timeout_seconds:g}s"
         ) from err
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()[-300:]
-        raise EvidenceError(f"evidence source {source.name!r} exited {result.returncode}: {detail}")
+    if process.returncode != 0:
+        detail = (stderr or stdout).strip()[-300:]
+        raise EvidenceError(
+            f"evidence source {source.name!r} exited {process.returncode}: {detail}"
+        )
     try:
-        parsed = json.loads(result.stdout)
+        parsed = json.loads(stdout)
     except json.JSONDecodeError as err:
         raise EvidenceError(f"evidence source {source.name!r} did not print JSON: {err}") from err
     if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
@@ -66,3 +76,15 @@ def _run(source: EvidenceSource) -> list[dict]:
         item.setdefault("source", source.name)
         item.setdefault("ref", source.name)
     return parsed
+
+
+def _kill_tree(process: subprocess.Popen) -> None:
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        else:  # Windows: no process groups via setsid; kill the direct child
+            process.kill()
+    except (ProcessLookupError, PermissionError):
+        pass
+    # Reap and close the pipes now that the whole group is dead.
+    process.communicate()
