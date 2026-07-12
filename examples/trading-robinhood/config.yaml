@@ -1,41 +1,72 @@
-# Trading example configuration — copy to the repository root as config.yaml.
-# Requires mcp.json (see mcp.example.json) for live broker grounding.
+# Trading example configuration — a faithful copy of the reference deployment.
+# Copy to your working directory as config.yaml; requires mcp.json (see
+# mcp.example.json) for live broker grounding.
 
 log: decisions.jsonl
+
+# Standing plans (cadenced builds/trims, trigger rules) — create with
+# 'caucus intents add', e.g.:
+#   caucus intents add "ACME build" --direction build --target 5% \
+#     --pacing "weekly on dips" --cadence-days 7
+intents: intents.db
+
+evidence_sources:
+  # Keyless news/macro feeds (Fed press RSS, Hacker News, Polymarket);
+  # per-feed tolerant — a dead feed becomes a note, never a blocked briefing.
+  - name: news-macro
+    command: python3 news_evidence.py
+    timeout_seconds: 60
+  # Pattern for deterministic indicators: compute MAs/momentum/regime in
+  # plain code from your own price cache and print JSON evidence items —
+  # the panel reasons over numbers it did not produce.
+  # - name: quant-snapshot
+  #   command: python3 snapshot_evidence.py
+  #   timeout_seconds: 30
 
 backend:
   type: claude
   mcp_config: mcp.json
-  # Read-only tools ONLY — this example deliberates, it never trades.
+  # Read-only tools ONLY — this deployment deliberates and records, never trades.
   allowed_tools:
     - mcp__robinhood-trading__get_equity_quotes
     - mcp__robinhood-trading__get_equity_historicals
     - mcp__robinhood-trading__get_portfolio
     - mcp__robinhood-trading__get_equity_positions
+    - mcp__robinhood-trading__get_index_quotes
+    - mcp__robinhood-trading__get_option_chains
+    - mcp__robinhood-trading__get_option_instruments
+    - mcp__robinhood-trading__get_option_quotes
+    - mcp__robinhood-trading__get_scans
+    - mcp__robinhood-trading__run_scan
+    - mcp__robinhood-trading__get_earnings_calendar
 
 panel:
   - name: macro
     charge: >-
-      Assess the macro and market regime relevant to the question. Fetch
-      current quotes and index levels rather than assuming; state which
-      regime signals support or undermine the proposal.
+      Assess the macro and market regime relevant to the question. Use the
+      news/macro evidence and fetch current quotes rather than assuming;
+      state which signals support or undermine the proposal.
   - name: momentum
     charge: >-
-      Evaluate trend and momentum. Fetch recent historicals; judge the
-      proposal against moving-average position and recent price behavior,
-      not narrative.
+      Evaluate trend and momentum from recent historicals; judge against
+      moving-average position and price behavior, not narrative.
   - name: risk-officer
     charge: >-
       Argue the downside. Quantify what a bad outcome costs given current
       position sizes (fetch them), concentration, and liquidity. Oppose
-      anything that breaches prudent sizing even if the thesis is good.
+      anything that breaches prudent sizing or deviates from standing
+      intents without strong cause. For options, insist collateral is
+      computed from cash plus liquid reserves, never literal cash alone.
 
-# The standing questions every briefing run answers ('caucus briefing').
+# The standing questions every 'caucus briefing' run answers, in order.
 agenda:
   - "Given the open intents, live positions, and current prices: which intent, if any, is due for its next action today, and what exactly should be done?"
-  - "Does current market regime or any position's behavior warrant a defensive action (hedge, trim, or pause of an intent) beyond the standing plans?"
+  - "Does the current market regime, the news, or any position behavior warrant a defensive action (hedge, trim, or pausing an intent) beyond the standing plans?"
+  - "Income: is there an attractive cash-secured put or covered call this run? Use live option chains (~30-45 DTE, ~0.25 delta) on names held or gladly owned per the intents; size against available collateral; skip any name within 14 days of earnings."
+  - "Opportunity scan: screen today's market movers for at most one new candidate consistent with the intents and regime; drop anything illiquid or junk-quality. If nothing qualifies, say so plainly."
 
-# Delivery — Gmail via an app password; the env vars hold the credentials.
-# notify:
-#   type: email
-#   to: you@example.com
+# Delivery — Gmail-friendly SMTP; credentials come from the environment
+# variables GMAIL_ADDRESS and GMAIL_APP_PASSWORD (never from this file).
+notify:
+  type: email
+  to: you@example.com

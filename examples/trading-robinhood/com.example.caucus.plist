@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd template (macOS): copy to ~/Library/LaunchAgents/com.example.caucus.plist,
+     adjust the script path and times, then:
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.caucus.plist
+     On Linux, use cron instead:
+       15 8,14 * * 1-5 CAUCUS_DIR=$HOME/caucus-live bash $HOME/caucus-live/run-caucus.sh -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.caucus</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/YOURUSER/caucus-live/run-caucus.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>45</integer></dict>
+    </array>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOURUSER/caucus-live/logs/launchd.err</string>
+</dict>
+</plist>
