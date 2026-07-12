@@ -3,6 +3,9 @@
 
 log: decisions.jsonl
 
+# Standing plans injected into every deliberation as evidence (see 'caucus intents').
+# intents: intents.db
+
 backend:
   type: claude                # the locally authenticated Claude Code CLI; no API key
   # MCP evidence layer: declare servers and the tools analysts may call, and
