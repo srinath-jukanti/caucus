@@ -40,22 +40,43 @@ because a single serialization difference changes the hash:
   canonical form is pure ASCII),
 - strings escaped per RFC 8259, using the short escapes (`\n`, `\"`, `\\`)
   where they exist,
-- numbers written in shortest-round-trip IEEE-754 double form, keeping a
-  trailing `.0` for integral floats (`0.8`, `1.0` — not `1`); non-finite
-  numbers (NaN, Infinity) are not permitted anywhere in a record, and
-  integers must lie within the IEEE-754 exactly-representable range
-  (|n| ≤ 2^53) — larger integers hash non-portably across implementations
-  and do not conform, in known fields or unknown ones,
+- floats spelled exactly as CPython's `repr`/`json.dumps` algorithm emits
+  them: the shortest decimal string that round-trips the IEEE-754 double,
+  rendered with Python's notation rules — exponent form only when the
+  decimal exponent is ≥ 16 or ≤ −5, written with an explicit sign and
+  two-digit zero-padded exponent (`1e+20`, `1e-07` — never `1e-7`); a
+  trailing `.0` for integral floats in decimal form (`1.0` — not `1`);
+  negative zero preserved (`-0.0`). **This exact spelling is normative**
+  (a bare "shortest form" rule would be ambiguous for exponent-form
+  values); the float vectors below pin it,
+- non-finite numbers (NaN, Infinity) are not permitted anywhere in a
+  record, and integers must lie within the IEEE-754 exactly-representable
+  range (|n| ≤ 2^53) — larger integers hash non-portably across
+  implementations and do not conform, in known fields or unknown ones,
 - the SHA-256 input is the UTF-8 (equivalently ASCII) encoding of that
   string.
 
-This matches Python's `json.dumps(payload, sort_keys=True,
-separators=(",", ":"))` for conforming records; implementations in languages
-whose default JSON serializers differ (e.g. JavaScript emits `1` and literal
-Unicode) must implement this profile explicitly — as with any
-canonicalization scheme. Migration to RFC 8785 (JCS) is under consideration
-for a future schema version; it would change hashes and therefore requires a
-`schema_version` bump.
+The profile is, by construction, exactly the output of Python's
+`json.dumps(payload, sort_keys=True, separators=(",", ":"))`;
+implementations in languages whose serializers differ (e.g. JavaScript
+emits `1` for integral floats, literal Unicode, and `1e-7`-style
+exponents) must implement this profile explicitly — as with any
+canonicalization scheme. Migration to RFC 8785 (JCS) is under
+consideration for a future schema version; it would change hashes and
+therefore requires a `schema_version` bump.
+
+#### Float spelling vectors
+
+| double value | canonical spelling |
+|---|---|
+| 0.8 | `0.8` |
+| 1.0 | `1.0` |
+| 10⁻⁷ | `1e-07` |
+| 10²⁰ | `1e+20` |
+| −0.0 | `-0.0` |
+| 0.0001 | `0.0001` |
+| 0.00001 | `1e-05` |
+| 10¹⁵ | `1000000000000000.0` |
 
 ### Test vector
 
@@ -137,9 +158,13 @@ The chain alone cannot detect **tail truncation**: deleting the final record
 (or replacing the log with any earlier prefix) leaves a chain that is
 internally valid. Conforming writers therefore maintain a sidecar checkpoint,
 `<log>.head`, a JSON object `{"count": N, "head_hash": "..."}` updated
-atomically after every append. A verification that confirmed the checkpoint
-is reported as **anchored**; without a checkpoint it is **unanchored** and
-truncation is not detectable.
+atomically after every append — `count` is a non-negative integer within
+the safe-integer range (a JSON boolean does not conform) and `head_hash`
+is 64 lowercase hex characters; verifiers must validate both types before
+comparing, or malformed checkpoint data could earn the stronger anchored
+result. A verification that confirmed the checkpoint is reported as
+**anchored**; without a checkpoint it is **unanchored** and truncation is
+not detectable.
 
 Writers must **verify before appending** and refuse to extend a log that
 fails verification — otherwise an append after truncation would rewrite the

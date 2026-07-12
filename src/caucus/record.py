@@ -329,6 +329,12 @@ class DecisionLog:
             # ValueError covers JSONDecodeError, UnicodeDecodeError, and duplicate keys;
             # RecursionError covers adversarially deep nesting.
             return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
+        # type() checks, not isinstance: True == 1 in Python, so a boolean count
+        # would otherwise earn the stronger anchored result.
+        if type(expected_count) is not int or not 0 <= expected_count <= _MAX_SAFE_INT:
+            return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
+        if type(expected_hash) is not str or not _HEX_HASH.fullmatch(expected_hash):
+            return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
         if expected_count != count or expected_hash != prev:
             return VerifyResult(
                 ok=False,

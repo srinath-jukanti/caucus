@@ -10,6 +10,7 @@ from caucus.record import (
     DecisionRecord,
     LogIntegrityError,
     _numeric_violation,
+    canonical_form,
     content_hash,
 )
 
@@ -331,6 +332,40 @@ def test_verify_rejects_non_finite_numbers(log):
     assert not result.ok
     assert result.broken_at == 0
     assert result.reason == "non-finite number"
+
+
+def test_spec_float_spelling_vectors():
+    """Pins the SPEC.md float-spelling vectors — the exact spelling is normative."""
+    vectors = [
+        (0.8, "0.8"),
+        (1.0, "1.0"),
+        (1e-07, "1e-07"),
+        (1e20, "1e+20"),
+        (-0.0, "-0.0"),
+        (0.0001, "0.0001"),
+        (0.00001, "1e-05"),
+        (1e15, "1000000000000000.0"),
+    ]
+    for value, spelling in vectors:
+        assert canonical_form({"v": value}) == '{"v":' + spelling + "}"
+
+
+def test_verify_rejects_boolean_checkpoint_count(log):
+    log.append(make_record())
+    head = json.loads(log.head_path.read_text())
+    # True == 1 in Python: without a strict type check this would verify anchored.
+    log.head_path.write_text(json.dumps({"count": True, "head_hash": head["head_hash"]}))
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "malformed head checkpoint"
+
+
+def test_verify_rejects_malformed_checkpoint_hash(log):
+    log.append(make_record())
+    log.head_path.write_text(json.dumps({"count": 1, "head_hash": "not-a-hash"}))
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "malformed head checkpoint"
 
 
 def test_spec_golden_vector():
