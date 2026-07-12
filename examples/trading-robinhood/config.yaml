@@ -35,5 +35,7 @@ agenda:
   - "Given the open intents, live positions, and current prices: which intent, if any, is due for its next action today, and what exactly should be done?"
   - "Does current market regime or any position's behavior warrant a defensive action (hedge, trim, or pause of an intent) beyond the standing plans?"
 
-# Delivery hook — receives the rendered briefing path as its argument.
-# notify_command: bash /path/to/send_briefing.sh
+# Delivery — Gmail via an app password; the env vars hold the credentials.
+# notify:
+#   type: email
+#   to: you@example.com

@@ -62,7 +62,9 @@ notify_command: bash send_briefing.sh
     )
     config = Config.load(path)
     assert config.agenda == ["Question one?", "Question two?"]
-    assert config.notify_command == "bash send_briefing.sh"
+    from caucus.notify import CommandNotifier
+
+    assert config.notify == CommandNotifier(command="bash send_briefing.sh")
 
 
 @pytest.mark.parametrize(

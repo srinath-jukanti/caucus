@@ -207,16 +207,14 @@ def briefing(
 ) -> None:
     """Deliberate every agenda subject from the config and render one briefing.
 
-    Writes OUT (markdown) and its .json sibling, then runs the configured
-    notify_command with the markdown path as its argument — email scripts,
-    webhooks, anything executable.
+    Writes OUT (markdown) and its .json sibling, then delivers it via the
+    configured notifier — 'email' (SMTP, Gmail-friendly, credentials from
+    env vars) or 'command' (any executable, briefing path as argument).
     """
-    import shlex
-    import subprocess
-
     from caucus.briefing import run_agenda
     from caucus.config import Config, ConfigError
     from caucus.engine import Deliberation
+    from caucus.notify import NotifyError
 
     config_path = (
         config if config else Path("config.yaml") if Path("config.yaml").exists() else None
@@ -247,11 +245,13 @@ def briefing(
     for record in result.records:
         typer.echo(f"- {record.subject[:70]} → {record.decision[:90]} ({record.confidence:.0%})")
 
-    if loaded.notify_command:
-        completed = subprocess.run(f"{loaded.notify_command} {shlex.quote(str(out))}", shell=True)
-        if completed.returncode != 0:
-            typer.echo(f"notify command exited {completed.returncode}", err=True)
-            raise typer.Exit(1)
+    if loaded.notify is not None:
+        subject = f"[Caucus] briefing {result.generated_at[:10]} — {len(result.records)} decisions"
+        try:
+            loaded.notify.send(subject, result.to_markdown(), attachment_path=out)
+        except NotifyError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(1) from err
         typer.echo("notified")
 
 
