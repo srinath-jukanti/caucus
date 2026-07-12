@@ -89,13 +89,20 @@ def content_hash(payload: dict) -> str:
 
 
 def _has_non_finite(value) -> bool:
-    """SPEC forbids NaN/Infinity anywhere — they are not valid JSON and hash non-portably."""
-    if isinstance(value, float):
-        return not math.isfinite(value)
-    if isinstance(value, dict):
-        return any(_has_non_finite(v) for v in value.values())
-    if isinstance(value, list):
-        return any(_has_non_finite(v) for v in value)
+    """SPEC forbids NaN/Infinity anywhere — they are not valid JSON and hash non-portably.
+
+    Iterative traversal: adversarially deep nesting must not overflow the stack.
+    """
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, float):
+            if not math.isfinite(current):
+                return True
+        elif isinstance(current, dict):
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
     return False
 
 
@@ -274,11 +281,6 @@ class DecisionLog:
                     return VerifyResult(
                         ok=False, count=count, broken_at=index, reason="duplicate key"
                     )
-                except RecursionError:
-                    # Adversarially deep nesting must fail structurally, not crash.
-                    return VerifyResult(
-                        ok=False, count=count, broken_at=index, reason="malformed record"
-                    )
                 if not isinstance(payload, dict):
                     return VerifyResult(
                         ok=False, count=count, broken_at=index, reason="malformed record"
@@ -299,6 +301,10 @@ class DecisionLog:
         except UnicodeDecodeError:
             # Damaged/tampered bytes must yield a structured failure, not a crash.
             return VerifyResult(ok=False, count=count, broken_at=count, reason="invalid encoding")
+        except RecursionError:
+            # Depth-based DoS anywhere in parse, validation, or hashing must fail
+            # structurally, not crash the verifier.
+            return VerifyResult(ok=False, count=count, broken_at=count, reason="malformed record")
 
         if not self.head_path.exists():
             return VerifyResult(ok=True, count=count, anchored=False)

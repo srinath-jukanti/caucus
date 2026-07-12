@@ -1,4 +1,5 @@
 import json
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -8,6 +9,7 @@ from caucus.record import (
     DecisionLog,
     DecisionRecord,
     LogIntegrityError,
+    _has_non_finite,
     content_hash,
 )
 
@@ -246,6 +248,18 @@ def test_verify_rejects_nested_duplicate_keys(log):
     result = log.verify()
     assert not result.ok
     assert result.reason == "duplicate key"
+
+
+def test_non_finite_traversal_is_iterative():
+    # Deeper than any recursion limit: proves traversal cannot stack-overflow.
+    depth = sys.getrecursionlimit() * 3
+    clean = 0.5
+    poisoned = float("nan")
+    for _ in range(depth):
+        clean = [clean]
+        poisoned = [poisoned]
+    assert _has_non_finite(clean) is False
+    assert _has_non_finite(poisoned) is True
 
 
 def test_verify_reports_adversarially_deep_json(log):
