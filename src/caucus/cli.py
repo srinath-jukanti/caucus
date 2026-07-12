@@ -25,21 +25,37 @@ def deliberate(
     subject: str,
     log: Path = Path("decisions.jsonl"),
     evidence: Path | None = None,
+    backend: str = "claude",
+    model: str | None = None,
+    base_url: str | None = None,
 ) -> None:
     """Convene the analyst panel on SUBJECT and append the outcome to the log.
 
-    Agents run through the locally authenticated Claude Code CLI; EVIDENCE is
-    an optional JSON file holding a list of {source, ref, ...} objects.
+    Backends: 'claude' (default — the locally authenticated Claude Code CLI,
+    no API key) or 'openai' (any OpenAI-compatible provider via --model and
+    --base-url; key read from OPENAI_API_KEY). EVIDENCE is an optional JSON
+    file holding a list of {source, ref, ...} objects.
     """
-    from caucus.backends import ClaudeCodeBackend
+    from caucus.backends import ClaudeCodeBackend, OpenAICompatibleBackend
     from caucus.engine import Deliberation
 
     items = json.loads(evidence.read_text()) if evidence else []
-    if not isinstance(items, list):
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
         typer.echo("evidence file must contain a JSON list of objects", err=True)
         raise typer.Exit(2)
 
-    record = Deliberation(backend=ClaudeCodeBackend(), log=DecisionLog(log)).run(subject, items)
+    if backend == "claude":
+        agent_backend = ClaudeCodeBackend()
+    elif backend == "openai":
+        if not model:
+            typer.echo("--model is required with --backend openai", err=True)
+            raise typer.Exit(2)
+        agent_backend = OpenAICompatibleBackend(model=model, base_url=base_url)
+    else:
+        typer.echo(f"unknown backend {backend!r} (expected 'claude' or 'openai')", err=True)
+        raise typer.Exit(2)
+
+    record = Deliberation(backend=agent_backend, log=DecisionLog(log)).run(subject, items)
     typer.echo(f"DECISION ({record.confidence:.0%} confidence): {record.decision}")
     for position in record.dissent:
         typer.echo(f"DISSENT [{position['agent']}]: {position['summary']}")
