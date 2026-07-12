@@ -88,22 +88,33 @@ def content_hash(payload: dict) -> str:
     return hashlib.sha256(canonical_form(payload).encode()).hexdigest()
 
 
-def _has_non_finite(value) -> bool:
-    """SPEC forbids NaN/Infinity anywhere — they are not valid JSON and hash non-portably.
+# Beyond 2**53 IEEE-754 doubles cannot represent every integer, so implementations
+# hashing via doubles could not reproduce the canonical form.
+_MAX_SAFE_INT = 2**53
+
+
+def _numeric_violation(value) -> str | None:
+    """SPEC confines every number, in known fields or not, to finite IEEE-754-safe
+    values: NaN/Infinity are not valid JSON, and unbounded integers hash non-portably.
 
     Iterative traversal: adversarially deep nesting must not overflow the stack.
     """
     stack = [value]
     while stack:
         current = stack.pop()
+        if isinstance(current, bool):
+            continue
         if isinstance(current, float):
             if not math.isfinite(current):
-                return True
+                return "non-finite number"
+        elif isinstance(current, int):
+            if abs(current) > _MAX_SAFE_INT:
+                return "integer outside IEEE-754 safe range"
         elif isinstance(current, dict):
             stack.extend(current.values())
         elif isinstance(current, list):
             stack.extend(current)
-    return False
+    return None
 
 
 def _utc_now() -> str:
@@ -166,8 +177,9 @@ def _record_violation(payload: dict) -> str | None:
     """Full record validation, shared by the writer and the verifier."""
     if not REQUIRED_FIELDS <= payload.keys():
         return "malformed record"
-    if _has_non_finite(payload):
-        return "non-finite number"
+    numeric = _numeric_violation(payload)
+    if numeric is not None:
+        return numeric
     if not isinstance(payload["schema_version"], str):
         return "invalid schema_version type"
     if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
@@ -245,9 +257,11 @@ class DecisionLog:
                     + ")"
                 )
             record.prev_hash, count = self._chain_tip()
-            if _has_non_finite(asdict(record)):
-                # Checked before hashing — canonical_form would refuse to serialize it.
-                raise ValueError("invalid record: non-finite number")
+            numeric = _numeric_violation(asdict(record))
+            if numeric is not None:
+                # Checked before hashing — canonical_form would otherwise raise or
+                # serialize a non-portable value.
+                raise ValueError(f"invalid record: {numeric}")
             record.hash = record.compute_hash()
             violation = _record_violation(asdict(record))
             if violation is not None:

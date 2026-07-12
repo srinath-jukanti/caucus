@@ -42,7 +42,10 @@ because a single serialization difference changes the hash:
   where they exist,
 - numbers written in shortest-round-trip IEEE-754 double form, keeping a
   trailing `.0` for integral floats (`0.8`, `1.0` — not `1`); non-finite
-  numbers (NaN, Infinity) are not permitted anywhere in a record,
+  numbers (NaN, Infinity) are not permitted anywhere in a record, and
+  integers must lie within the IEEE-754 exactly-representable range
+  (|n| ≤ 2^53) — larger integers hash non-portably across implementations
+  and do not conform, in known fields or unknown ones,
 - the SHA-256 input is the UTF-8 (equivalently ASCII) encoding of that
   string.
 
@@ -113,9 +116,10 @@ A verifier walks the file in order and, for each record, checks:
    strings, `positions`/`dissent` entries carry string `agent`/`stance`/
    `summary` and a 0–1 `confidence`, `evidence` entries carry string
    `source`/`ref`, `confidence` is a number in 0–1, hashes are 64 lowercase
-   hex characters, `timestamp` parses as ISO 8601 with a UTC offset, and no
-   non-finite number (NaN/Infinity) appears anywhere in the record, known
-   fields or not (else: a specific violation reason),
+   hex characters, `timestamp` parses as ISO 8601 with a UTC offset, and
+   every number anywhere in the record — known fields or not — is finite
+   and within the IEEE-754 safe-integer range
+   (else: a specific violation reason),
 4. `prev_hash` equals the previous record's `hash` — genesis hash for the
    first record (else: **broken chain link**),
 5. recomputing the canonical-form hash reproduces `hash`

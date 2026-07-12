@@ -9,7 +9,7 @@ from caucus.record import (
     DecisionLog,
     DecisionRecord,
     LogIntegrityError,
-    _has_non_finite,
+    _numeric_violation,
     content_hash,
 )
 
@@ -250,7 +250,7 @@ def test_verify_rejects_nested_duplicate_keys(log):
     assert result.reason == "duplicate key"
 
 
-def test_non_finite_traversal_is_iterative():
+def test_numeric_traversal_is_iterative():
     # Deeper than any recursion limit: proves traversal cannot stack-overflow.
     depth = sys.getrecursionlimit() * 3
     clean = 0.5
@@ -258,8 +258,39 @@ def test_non_finite_traversal_is_iterative():
     for _ in range(depth):
         clean = [clean]
         poisoned = [poisoned]
-    assert _has_non_finite(clean) is False
-    assert _has_non_finite(poisoned) is True
+    assert _numeric_violation(clean) is None
+    assert _numeric_violation(poisoned) == "non-finite number"
+
+
+def test_append_rejects_unsafe_integers(log):
+    log.append(make_record())
+    log_before = log.path.read_text()
+    bad = make_record()
+    bad.evidence = [{"source": "quotes", "ref": "x", "weight": 10**400}]
+    with pytest.raises(ValueError, match="IEEE-754 safe range"):
+        log.append(bad)
+    assert log.path.read_text() == log_before
+
+
+def test_verify_rejects_unsafe_integers(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["future_field"] = 2**53 + 1
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.broken_at == 0
+    assert result.reason == "integer outside IEEE-754 safe range"
+
+
+def test_boundary_safe_integer_is_accepted(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["future_field"] = 2**53
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    assert log.verify().ok
 
 
 def test_verify_reports_adversarially_deep_json(log):
