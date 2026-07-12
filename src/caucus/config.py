@@ -27,6 +27,8 @@ class Config:
     panel: list[Analyst] = field(default_factory=lambda: list(DEFAULT_PANEL))
     intents: Path | None = None
     evidence_sources: list[EvidenceSource] = field(default_factory=list)
+    agenda: list[str] = field(default_factory=list)
+    notify_command: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -53,6 +55,19 @@ class Config:
             config.panel = _build_panel(raw["panel"])
         if "evidence_sources" in raw:
             config.evidence_sources = _build_evidence_sources(raw["evidence_sources"])
+        if "agenda" in raw:
+            agenda = raw["agenda"]
+            if (
+                not isinstance(agenda, list)
+                or not agenda
+                or not all(isinstance(item, str) and item.strip() for item in agenda)
+            ):
+                raise ConfigError("'agenda' must be a non-empty list of subject strings")
+            config.agenda = agenda
+        if "notify_command" in raw:
+            if not isinstance(raw["notify_command"], str) or not raw["notify_command"].strip():
+                raise ConfigError("'notify_command' must be a non-empty string")
+            config.notify_command = raw["notify_command"]
         return config
 
 

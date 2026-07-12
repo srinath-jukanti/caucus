@@ -40,3 +40,11 @@ panel:
     charge: Try to refute the proposal; make the strongest case AGAINST it.
   - name: assessor
     charge: Weigh feasibility, risks, and base rates dispassionately.
+
+# The standing questions every 'caucus briefing' run answers, in order.
+# agenda:
+#   - "Which open intent, if any, is due for action today?"
+#   - "Any risks that warrant deviating from the standing plans?"
+
+# Delivery: run after the briefing renders, with the markdown path as argument.
+# notify_command: bash send_briefing.sh

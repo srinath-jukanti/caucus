@@ -18,6 +18,37 @@ def main() -> None:
     """Caucus — AI agents deliberating on the record."""
 
 
+def _configured_evidence(loaded) -> list[dict]:
+    """Collect configured evidence (external sources + open intents), fail-closed."""
+    items: list[dict] = []
+    if loaded.evidence_sources:
+        from caucus.evidence import EvidenceError, collect
+
+        try:
+            # Deterministic computation stays outside the model: sources print
+            # JSON evidence, and a broken source aborts the run rather than
+            # deliberating on silently missing data.
+            items += collect(loaded.evidence_sources)
+        except EvidenceError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(2) from err
+    if loaded.intents is not None:
+        from caucus.intents import IntentStore
+
+        # A mistyped path must not silently become an empty store — a panel
+        # missing its standing plans is confidently wrong, which is the exact
+        # failure this feature exists to prevent.
+        if not loaded.intents.exists():
+            typer.echo(
+                f"configured intents store {loaded.intents} does not exist — "
+                "create it with 'caucus intents add'",
+                err=True,
+            )
+            raise typer.Exit(2)
+        items += IntentStore(loaded.intents).as_evidence()
+    return items
+
+
 def _intents_store(db: Path | None):
     """Resolve the intent store: --db flag, else config.yaml's 'intents', else ./intents.db."""
     from caucus.config import Config
@@ -148,31 +179,7 @@ def deliberate(
         panel = loaded.panel
         if log == Path("decisions.jsonl"):
             log = loaded.log
-        if loaded.evidence_sources:
-            from caucus.evidence import EvidenceError, collect
-
-            try:
-                # Deterministic computation stays outside the model: sources
-                # print JSON evidence, and a broken source aborts the run
-                # rather than deliberating on silently missing data.
-                items = items + collect(loaded.evidence_sources)
-            except EvidenceError as err:
-                typer.echo(str(err), err=True)
-                raise typer.Exit(2) from err
-        if loaded.intents is not None:
-            from caucus.intents import IntentStore
-
-            # A mistyped path must not silently become an empty store — a panel
-            # missing its standing plans is confidently wrong, which is the
-            # exact failure this feature exists to prevent.
-            if not loaded.intents.exists():
-                typer.echo(
-                    f"configured intents store {loaded.intents} does not exist — "
-                    "create it with 'caucus intents add'",
-                    err=True,
-                )
-                raise typer.Exit(2)
-            items = items + IntentStore(loaded.intents).as_evidence()
+        items = items + _configured_evidence(loaded)
     elif backend == "claude":
         agent_backend = ClaudeCodeBackend()
     elif backend == "openai":
@@ -191,6 +198,61 @@ def deliberate(
     for position in record.dissent:
         typer.echo(f"DISSENT [{position['agent']}]: {position['summary']}")
     typer.echo(f"On the record: {log} (hash {record.hash[:12]}…)")
+
+
+@app.command()
+def briefing(
+    config: Path | None = None,
+    out: Path = Path("briefing.md"),
+) -> None:
+    """Deliberate every agenda subject from the config and render one briefing.
+
+    Writes OUT (markdown) and its .json sibling, then runs the configured
+    notify_command with the markdown path as its argument — email scripts,
+    webhooks, anything executable.
+    """
+    import shlex
+    import subprocess
+
+    from caucus.briefing import run_agenda
+    from caucus.config import Config, ConfigError
+    from caucus.engine import Deliberation
+
+    config_path = (
+        config if config else Path("config.yaml") if Path("config.yaml").exists() else None
+    )
+    if config_path is None:
+        typer.echo("briefing requires a config file with an 'agenda'", err=True)
+        raise typer.Exit(2)
+    try:
+        loaded = Config.load(config_path)
+    except ConfigError as err:
+        typer.echo(f"invalid config {config_path}: {err}", err=True)
+        raise typer.Exit(2) from err
+    if not loaded.agenda:
+        typer.echo(
+            f"{config_path} has no 'agenda' — list the standing subjects to deliberate", err=True
+        )
+        raise typer.Exit(2)
+
+    items = _configured_evidence(loaded)
+    deliberation = Deliberation(
+        backend=loaded.backend, log=DecisionLog(loaded.log), panel=loaded.panel
+    )
+    result = run_agenda(deliberation, loaded.agenda, items)
+
+    out.write_text(result.to_markdown(), encoding="utf-8")
+    out.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
+    typer.echo(f"briefing written: {out} ({len(result.records)} decisions)")
+    for record in result.records:
+        typer.echo(f"- {record.subject[:70]} → {record.decision[:90]} ({record.confidence:.0%})")
+
+    if loaded.notify_command:
+        completed = subprocess.run(f"{loaded.notify_command} {shlex.quote(str(out))}", shell=True)
+        if completed.returncode != 0:
+            typer.echo(f"notify command exited {completed.returncode}", err=True)
+            raise typer.Exit(1)
+        typer.echo("notified")
 
 
 @app.command()
