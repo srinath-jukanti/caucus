@@ -14,6 +14,7 @@ import yaml
 from caucus.backends import Backend, ClaudeCodeBackend, OpenAICompatibleBackend
 from caucus.engine import DEFAULT_PANEL, Analyst
 from caucus.evidence import EvidenceSource
+from caucus.notify import CommandNotifier, EmailNotifier
 
 
 class ConfigError(ValueError):
@@ -28,7 +29,7 @@ class Config:
     intents: Path | None = None
     evidence_sources: list[EvidenceSource] = field(default_factory=list)
     agenda: list[str] = field(default_factory=list)
-    notify_command: str | None = None
+    notify: EmailNotifier | CommandNotifier | None = None
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -64,10 +65,14 @@ class Config:
             ):
                 raise ConfigError("'agenda' must be a non-empty list of subject strings")
             config.agenda = agenda
+        if "notify" in raw and "notify_command" in raw:
+            raise ConfigError("use either 'notify' or 'notify_command', not both")
+        if "notify" in raw:
+            config.notify = _build_notifier(raw["notify"])
         if "notify_command" in raw:
             if not isinstance(raw["notify_command"], str) or not raw["notify_command"].strip():
                 raise ConfigError("'notify_command' must be a non-empty string")
-            config.notify_command = raw["notify_command"]
+            config.notify = CommandNotifier(command=raw["notify_command"])
         return config
 
 
@@ -98,6 +103,34 @@ def _build_backend(raw: object) -> Backend:
             model=raw["model"], base_url=base_url, api_key_env=api_key_env
         )
     raise ConfigError(f"unknown backend type {kind!r} (expected 'claude' or 'openai')")
+
+
+def _build_notifier(raw: object) -> EmailNotifier | CommandNotifier:
+    if not isinstance(raw, dict):
+        raise ConfigError("'notify' must be a mapping with a 'type'")
+    kind = raw.get("type")
+    if kind == "email":
+        to = raw.get("to")
+        if not isinstance(to, str) or not to.strip():
+            raise ConfigError("email notify requires a string 'to' address")
+        options = {}
+        for key in ("smtp_host", "address_env", "password_env"):
+            if key in raw:
+                if not isinstance(raw[key], str) or not raw[key].strip():
+                    raise ConfigError(f"'{key}' must be a non-empty string")
+                options[key] = raw[key]
+        if "smtp_port" in raw:
+            port = raw["smtp_port"]
+            if isinstance(port, bool) or not isinstance(port, int) or not 0 < port < 65536:
+                raise ConfigError("'smtp_port' must be a valid port number")
+            options["smtp_port"] = port
+        return EmailNotifier(to=to, **options)
+    if kind == "command":
+        command = raw.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise ConfigError("command notify requires a string 'command'")
+        return CommandNotifier(command=command)
+    raise ConfigError(f"unknown notify type {kind!r} (expected 'email' or 'command')")
 
 
 def _build_evidence_sources(raw: object) -> list[EvidenceSource]:

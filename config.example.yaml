@@ -46,5 +46,14 @@ panel:
 #   - "Which open intent, if any, is due for action today?"
 #   - "Any risks that warrant deviating from the standing plans?"
 
-# Delivery: run after the briefing renders, with the markdown path as argument.
-# notify_command: bash send_briefing.sh
+# Delivery after the briefing renders. Email credentials come from the NAMED
+# environment variables — never put secrets in this file.
+# notify:
+#   type: email                    # Gmail-friendly SMTP defaults
+#   to: you@example.com
+#   address_env: GMAIL_ADDRESS     # env var holding the sending address
+#   password_env: GMAIL_APP_PASSWORD
+# ...or run anything executable with the briefing path as its argument:
+# notify:
+#   type: command
+#   command: bash send_briefing.sh
