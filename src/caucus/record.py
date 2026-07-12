@@ -248,7 +248,7 @@ class DecisionLog:
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._locked():
-            existing = self.verify()
+            existing = self._verify_locked()
             if not existing.ok:
                 raise LogIntegrityError(
                     f"refusing to append: existing log fails verification "
@@ -275,6 +275,18 @@ class DecisionLog:
 
     def verify(self) -> VerifyResult:
         """Walk the log, checking schema, every content hash, and every chain link.
+
+        Takes the append lock: an append fsyncs the record before replacing the
+        checkpoint, so an unlocked reader could observe the gap and report a
+        false truncation alarm during normal operation.
+        """
+        if not self.path.exists() and not self.head_path.exists():
+            return VerifyResult(ok=True, count=0, anchored=False)
+        with self._locked():
+            return self._verify_locked()
+
+    def _verify_locked(self) -> VerifyResult:
+        """Verification body; callers must hold the sidecar lock.
 
         Works on the raw JSON objects (not the dataclass) so records carrying
         unknown future fields hash exactly as written. When the head checkpoint

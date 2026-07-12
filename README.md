@@ -62,7 +62,7 @@ $ uv run caucus verify decisions.jsonl
 OK — 1 records, chain intact
 ```
 
-Tamper with any byte of the file and `verify` fails, naming the record and the reason. Both properties are enforced by tests, not by promises.
+Change any recorded value — a decision, a dissent, a confidence, the presence or order of records — and `verify` fails, naming the record and the reason. (Hashes cover each record's canonical form, so semantically equivalent re-serializations are normalized rather than flagged.) Both properties are enforced by tests, not by promises.
 
 ## Status
 

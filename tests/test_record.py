@@ -395,6 +395,27 @@ def test_verify_reports_invalid_encoding(log):
     assert result.reason == "invalid encoding"
 
 
+def test_concurrent_verify_never_reports_false_tampering(log):
+    log.append(make_record())
+    false_alarms = []
+
+    def appender():
+        for i in range(10):
+            DecisionLog(log.path).append(make_record(subject=f"subject {i}"))
+
+    def verifier():
+        for _ in range(30):
+            result = DecisionLog(log.path).verify()
+            if not result.ok:
+                false_alarms.append(result.reason)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(appender), pool.submit(verifier)]
+        for job in jobs:
+            job.result()
+    assert false_alarms == []
+
+
 def test_concurrent_appends_keep_chain_intact(log):
     def worker(i):
         # Each append opens its own handle, so the file lock is what serializes them.
