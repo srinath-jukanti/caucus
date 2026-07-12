@@ -39,6 +39,31 @@ uv run caucus version
 
 Everything is inspectable with `cat` and `sqlite3`. No vector database, no hosted service, no telemetry.
 
+## The decision record
+
+The record format is a versioned, open specification — see [SPEC.md](SPEC.md). Each record embeds its predecessor's SHA-256, so editing a record invalidates its own hash and deleting one breaks its successor's link:
+
+```python
+from caucus.record import DecisionLog, DecisionRecord
+
+log = DecisionLog("decisions.jsonl")
+log.append(DecisionRecord(
+    subject="Trim QQQ this week?",
+    decision="yes — one weekly tranche",
+    confidence=0.8,
+    positions=[{"agent": "macro", "stance": "yes", "summary": "overweight vs target", "confidence": 0.9}],
+    dissent=[{"agent": "momentum", "stance": "no", "summary": "trend still intact", "confidence": 0.6}],
+    evidence=[{"source": "quotes", "ref": "QQQ@725.60"}],
+))
+```
+
+```bash
+$ uv run caucus verify decisions.jsonl
+OK — 1 records, chain intact
+```
+
+Change any recorded value — a decision, a dissent, a confidence, the presence or order of records — and `verify` fails, naming the record and the reason. (Hashes cover each record's canonical form, so semantically equivalent re-serializations are normalized rather than flagged.) Both properties are enforced by tests, not by promises.
+
 ## Status
 
 Early and moving fast. The engine is being extracted, vertical slice by vertical slice, from a private trading agent that has run headless twice a day on real money since June 2026 — that system is the reference implementation and will ship (sanitized) as `examples/trading-robinhood/`.
