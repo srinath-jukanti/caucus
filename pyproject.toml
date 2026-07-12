@@ -8,6 +8,7 @@ license = "MIT"
 authors = [{ name = "Srinath Jukanti" }]
 keywords = ["multi-agent", "consensus", "deliberation", "mcp", "audit", "llm"]
 dependencies = [
+    "pyyaml>=6.0",
     "typer>=0.15",
 ]
 

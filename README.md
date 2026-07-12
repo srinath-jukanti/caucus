@@ -59,7 +59,9 @@ On the record: decisions.jsonl (hash 3f9c2a81d0b4…)
 uv run caucus deliberate "Adopt library X?" --backend openai --model llama3.1 --base-url http://localhost:11434/v1
 ```
 
-Evidence and panel positions are fenced behind unforgeable random-token delimiters and framed as *data, never instructions* — prompt-injection resistance is a design rule, not an afterthought. Bring your own panel (`caucus.engine.Analyst`) or backend.
+The subject, the evidence, and the panel's own positions are all fenced behind unforgeable random-token delimiters and framed as *data, never instructions* — prompt-injection resistance is a design rule, not an afterthought.
+
+Persistent setup lives in one file — copy [config.example.yaml](config.example.yaml) to `config.yaml` (picked up automatically) to choose the log path, the backend, and your own panel of analysts. With the Claude backend, `mcp_config` + `allowed_tools` turn on the **MCP evidence layer**: analysts ground their positions in live tool state — your broker, your issue tracker, your observability stack — during deliberation.
 
 ## The decision record
 
