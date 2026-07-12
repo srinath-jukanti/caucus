@@ -1,0 +1,26 @@
+# Caucus configuration — copy to config.yaml (gitignored) and adjust.
+# `caucus deliberate` picks up ./config.yaml automatically, or pass --config.
+
+log: decisions.jsonl
+
+backend:
+  type: claude                # the locally authenticated Claude Code CLI; no API key
+  # MCP evidence layer: declare servers and the tools analysts may call, and
+  # they will ground their positions in live tool state during deliberation.
+  # mcp_config: .mcp.json
+  # allowed_tools:
+  #   - mcp__my-server__get_quotes
+
+  # --- or any OpenAI-compatible provider (OpenAI, Ollama, vLLM, Groq, ...) ---
+  # type: openai
+  # model: llama3.1
+  # base_url: http://localhost:11434/v1
+  # api_key_env: OPENAI_API_KEY   # NAME of the env var — never the key itself
+
+panel:
+  - name: advocate
+    charge: Make the strongest evidence-grounded case FOR the proposal.
+  - name: skeptic
+    charge: Try to refute the proposal; make the strongest case AGAINST it.
+  - name: assessor
+    charge: Weigh feasibility, risks, and base rates dispassionately.

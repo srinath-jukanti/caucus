@@ -39,6 +39,32 @@ def test_deliberate_requires_model_for_openai_backend(tmp_path):
     assert result.exit_code == 2
 
 
+def test_deliberate_rejects_config_combined_with_backend_flags(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text("log: decisions.jsonl\n")
+    result = runner.invoke(
+        app,
+        [
+            "deliberate",
+            "subject",
+            "--config",
+            str(config),
+            "--backend",
+            "openai",
+            "--model",
+            "m",
+        ],
+    )
+    assert result.exit_code == 2
+
+
+def test_deliberate_reports_invalid_config(tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text("backend:\n  type: gemini\n")
+    result = runner.invoke(app, ["deliberate", "subject", "--config", str(config)])
+    assert result.exit_code == 2
+
+
 def test_verify_command_fails_on_tampered_log(tmp_path):
     log = DecisionLog(tmp_path / "decisions.jsonl")
     log.append(DecisionRecord(subject="subject", decision="yes", confidence=1.0))

@@ -26,20 +26,35 @@ class Backend(Protocol):
 
 @dataclass
 class ClaudeCodeBackend:
-    """Runs each prompt through `claude -p` using the user's existing login."""
+    """Runs each prompt through `claude -p` using the user's existing login.
+
+    With mcp_config set, agents can ground themselves in live MCP tool state
+    during their turn — this is the evidence layer: declare the servers, and
+    analysts fetch what they cite.
+    """
 
     executable: str = "claude"
     timeout_seconds: float = 600.0
+    mcp_config: str | None = None
+    allowed_tools: tuple[str, ...] = ()
 
     def complete(self, prompt: str) -> str:
         result = subprocess.run(
-            [self.executable, "-p", prompt],
+            self._command(prompt),
             capture_output=True,
             text=True,
             timeout=self.timeout_seconds,
             check=True,
         )
         return result.stdout
+
+    def _command(self, prompt: str) -> list[str]:
+        command = [self.executable, "-p", prompt]
+        if self.mcp_config:
+            command += ["--mcp-config", self.mcp_config]
+        if self.allowed_tools:
+            command += ["--allowedTools", ",".join(self.allowed_tools)]
+        return command
 
 
 @dataclass
