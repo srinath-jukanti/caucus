@@ -79,12 +79,22 @@ def _run(source: EvidenceSource) -> list[dict]:
 
 
 def _kill_tree(process: subprocess.Popen) -> None:
-    try:
-        if hasattr(os, "killpg"):
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        else:  # Windows: no process groups via setsid; kill the direct child
+    if hasattr(os, "killpg"):
+        # start_new_session made the child the group leader, so pgid == pid.
+        # Kill the group directly: looking it up via getpgid() races with the
+        # leader exiting while children still hold the pipes, and a swallowed
+        # lookup error would leave the reap below waiting on those children.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    else:  # Windows: no setsid process groups; kill the direct child
+        try:
             process.kill()
-    except (ProcessLookupError, PermissionError):
+        except OSError:
+            pass
+    try:
+        # Bounded reap as the last line of defense — never hang here.
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
         pass
-    # Reap and close the pipes now that the whole group is dead.
-    process.communicate()

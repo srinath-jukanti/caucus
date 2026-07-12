@@ -50,6 +50,18 @@ def test_timeout_kills_the_whole_process_tree():
     assert time.monotonic() - start < 10
 
 
+def test_timeout_when_shell_exits_but_child_holds_pipes():
+    import time
+
+    # The shell backgrounds the child and exits immediately; the group leader
+    # is gone while the child still holds the pipes — the direct killpg(pid)
+    # must still terminate the group instead of hanging on the reap.
+    start = time.monotonic()
+    with pytest.raises(EvidenceError, match="timed out"):
+        collect([EvidenceSource(name="orphan", command="sleep 30 &", timeout_seconds=1)])
+    assert time.monotonic() - start < 10
+
+
 def test_config_parses_evidence_sources(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(
