@@ -37,7 +37,9 @@ class Config:
             raise ConfigError("config root must be a mapping")
         config = cls()
         if "log" in raw:
-            config.log = Path(str(raw["log"]))
+            if not isinstance(raw["log"], str) or not raw["log"].strip():
+                raise ConfigError("'log' must be a non-empty string path")
+            config.log = Path(raw["log"])
         if "backend" in raw:
             config.backend = _build_backend(raw["backend"])
         if "panel" in raw:

@@ -80,6 +80,9 @@ backend:
         "panel: []\n",
         "panel:\n  - name: onlyname\n",
         "{unclosed\n",
+        "log:\n",
+        "log: [a, list]\n",
+        "log: '  '\n",
     ],
 )
 def test_invalid_configs_are_rejected(tmp_path, text):
@@ -106,3 +109,10 @@ def test_plain_claude_backend_has_no_tool_guard():
 
     command = ClaudeCodeBackend()._command("hello")
     assert TOOL_OUTPUT_GUARD not in command
+
+
+def test_allowed_tools_alone_still_carries_tool_guard():
+    from caucus.backends import TOOL_OUTPUT_GUARD, ClaudeCodeBackend
+
+    command = ClaudeCodeBackend(allowed_tools=("mcp__quotes__get",))._command("hello")
+    assert TOOL_OUTPUT_GUARD in command

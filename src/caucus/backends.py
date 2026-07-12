@@ -63,9 +63,12 @@ class ClaudeCodeBackend:
         command = [self.executable, "-p", prompt]
         if self.mcp_config:
             command += ["--mcp-config", self.mcp_config]
-            command += ["--append-system-prompt", TOOL_OUTPUT_GUARD]
         if self.allowed_tools:
             command += ["--allowedTools", ",".join(self.allowed_tools)]
+        if self.mcp_config or self.allowed_tools:
+            # allowed_tools alone can authorize globally configured tools, so the
+            # guard applies whenever any tool path is enabled.
+            command += ["--append-system-prompt", TOOL_OUTPUT_GUARD]
         return command
 
 
