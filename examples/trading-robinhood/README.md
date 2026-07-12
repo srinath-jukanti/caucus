@@ -30,22 +30,38 @@ The sample evidence is fictional. The default backend is the locally
 authenticated Claude Code CLI; add `--backend openai --model llama3.1
 --base-url http://localhost:11434/v1` to run fully local via Ollama.
 
-## Live — ground the panel in your broker
+## Live — the full reference deployment, step by step
 
-1. Copy `mcp.example.json` to `mcp.json` and complete authentication per your
-   MCP provider's documentation (for Robinhood, the agentic trading MCP).
-2. Copy `config.yaml` from this directory to the repository root (it is
-   gitignored there) and adjust the watchlist subjects to your own.
-3. Deliberate:
+Everything below is configuration; no code changes are required.
+
+1. **Install**: `uv tool install caucus` (from PyPI).
+2. **Broker MCP**: copy `mcp.example.json` to `mcp.json`; run one interactive
+   `claude` session with it to complete the provider's authentication.
+3. **Config**: copy `config.yaml` and `news_evidence.py` from this directory
+   into your working directory; set `notify.to` to your address and export
+   `GMAIL_ADDRESS`/`GMAIL_APP_PASSWORD` (a Gmail app password).
+4. **Standing plans**: record your cadenced builds/trims and trigger rules —
+   they are injected into every deliberation as evidence:
 
 ```bash
-uv run caucus deliberate "Trim the QQQ position toward its target this week?"
+caucus intents add "ACME build" --direction build --target 5% \
+  --pacing "weekly on dips" --cadence-days 7
+caucus intents add "XYZ exit at breakeven" --direction trim \
+  --target "exit full position" --notes "sell all at cost basis 114.94"
 ```
 
-Each analyst can now call the allowed read-only tools — quotes, historicals,
-portfolio state — and cite what it fetched as evidence. Tool output is
-covered by Caucus's system-level data-not-instructions guard; only
-**read-only** tools are allowed in this example by design.
+5. **Run**: `caucus briefing` — the agenda's four standing questions are
+   deliberated in order, the briefing is rendered and emailed, and every
+   decision (with dissent) lands in the hash-chained log.
+6. **Schedule**: `mkdir -p ~/caucus-live/logs` first (launchd opens its log
+   path before the script runs), then adapt `run-caucus.sh` (secrets from an
+   env file) and either the launchd template `com.example.caucus.plist`
+   (macOS) or the cron line in its comments (Linux).
+
+Each analyst calls the allowed read-only tools — quotes, historicals,
+portfolio, option chains, scans — and cites what it fetched as evidence.
+Tool output is covered by Caucus's system-level data-not-instructions guard;
+only **read-only** tools are allowed in this example by design.
 
 ## Guardrails carried over from the reference system
 
