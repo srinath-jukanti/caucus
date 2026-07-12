@@ -24,6 +24,7 @@ class Config:
     log: Path = Path("decisions.jsonl")
     backend: Backend = field(default_factory=ClaudeCodeBackend)
     panel: list[Analyst] = field(default_factory=lambda: list(DEFAULT_PANEL))
+    intents: Path | None = None
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -40,6 +41,10 @@ class Config:
             if not isinstance(raw["log"], str) or not raw["log"].strip():
                 raise ConfigError("'log' must be a non-empty string path")
             config.log = Path(raw["log"])
+        if "intents" in raw:
+            if not isinstance(raw["intents"], str) or not raw["intents"].strip():
+                raise ConfigError("'intents' must be a non-empty string path")
+            config.intents = Path(raw["intents"])
         if "backend" in raw:
             config.backend = _build_backend(raw["backend"])
         if "panel" in raw:

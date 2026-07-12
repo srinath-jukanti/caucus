@@ -7,11 +7,91 @@ from caucus import __version__
 from caucus.record import DecisionLog
 
 app = typer.Typer(help="Caucus — AI agents deliberating on the record.", no_args_is_help=True)
+intents_app = typer.Typer(
+    help="Manage durable intents — standing plans deliberations must respect."
+)
+app.add_typer(intents_app, name="intents", no_args_is_help=True)
 
 
 @app.callback()
 def main() -> None:
     """Caucus — AI agents deliberating on the record."""
+
+
+def _intents_store(db: Path | None):
+    """Resolve the intent store: --db flag, else config.yaml's 'intents', else ./intents.db."""
+    from caucus.config import Config
+    from caucus.intents import IntentStore
+
+    if db is None and Path("config.yaml").exists():
+        db = Config.load(Path("config.yaml")).intents
+    return IntentStore(db or Path("intents.db"))
+
+
+@intents_app.command("add")
+def intents_add(
+    name: str,
+    db: Path | None = None,
+    direction: str = "",
+    target: str = "",
+    pacing: str = "",
+    cadence_days: int | None = None,
+    last_acted: str | None = None,
+    notes: str = "",
+) -> None:
+    """Record a new standing intent."""
+    intent = _intents_store(db).add(
+        name=name,
+        direction=direction,
+        target=target,
+        pacing=pacing,
+        cadence_days=cadence_days,
+        last_acted=last_acted,
+        notes=notes,
+    )
+    typer.echo(f"#{intent.id} {intent.summary()}")
+
+
+@intents_app.command("list")
+def intents_list(db: Path | None = None, status: str | None = None) -> None:
+    """List intents, optionally filtered by status (open/paused/done)."""
+    intents = _intents_store(db).list(status=status)
+    if not intents:
+        typer.echo("(no intents)")
+    for intent in intents:
+        typer.echo(f"#{intent.id} {intent.summary()}")
+
+
+@intents_app.command("update")
+def intents_update(
+    intent_id: int,
+    db: Path | None = None,
+    status: str | None = None,
+    last_acted: str | None = None,
+    target: str | None = None,
+    pacing: str | None = None,
+    cadence_days: int | None = None,
+    notes: str | None = None,
+) -> None:
+    """Update fields on an intent (e.g. --status done, --last-acted 2026-07-10)."""
+    fields = {
+        key: value
+        for key, value in {
+            "status": status,
+            "last_acted": last_acted,
+            "target": target,
+            "pacing": pacing,
+            "cadence_days": cadence_days,
+            "notes": notes,
+        }.items()
+        if value is not None
+    }
+    try:
+        intent = _intents_store(db).update(intent_id, **fields)
+    except (KeyError, ValueError) as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(2) from err
+    typer.echo(f"#{intent.id} {intent.summary()}")
 
 
 @app.command()
@@ -68,6 +148,20 @@ def deliberate(
         panel = loaded.panel
         if log == Path("decisions.jsonl"):
             log = loaded.log
+        if loaded.intents is not None:
+            from caucus.intents import IntentStore
+
+            # A mistyped path must not silently become an empty store — a panel
+            # missing its standing plans is confidently wrong, which is the
+            # exact failure this feature exists to prevent.
+            if not loaded.intents.exists():
+                typer.echo(
+                    f"configured intents store {loaded.intents} does not exist — "
+                    "create it with 'caucus intents add'",
+                    err=True,
+                )
+                raise typer.Exit(2)
+            items = items + IntentStore(loaded.intents).as_evidence()
     elif backend == "claude":
         agent_backend = ClaudeCodeBackend()
     elif backend == "openai":
