@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(uv run --no-project python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag v$tag does not match pyproject version $version"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Quality gates
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run pytest -q
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/caucus
+    permissions:
+      # PyPI Trusted Publishing: OIDC only, no long-lived token secrets.
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
