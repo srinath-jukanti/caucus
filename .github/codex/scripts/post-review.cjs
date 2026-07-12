@@ -118,24 +118,30 @@ module.exports = async ({ github, context, core }) => {
       blockingSeverities.has(finding.severity) || finding.should_block_merge,
   )
   const decision = normalizeDecision(report, shouldRequestChanges)
+  // Non-blocking findings do not gate merges (the workflow files them as
+  // issues), so a 'comment' decision submits an APPROVE review: GitHub only
+  // supersedes a reviewer's earlier changes-requested review on approval or
+  // explicit dismissal, and a lingering COMMENT would leave reviewDecision
+  // stuck at CHANGES_REQUESTED forever even after every finding is fixed.
   const reviewEvent =
-    decision === 'request_changes'
-      ? 'REQUEST_CHANGES'
-      : decision === 'approve'
-        ? 'APPROVE'
-        : 'COMMENT'
+    decision === 'request_changes' ? 'REQUEST_CHANGES' : 'APPROVE'
 
   let submittedReviewEvent = reviewEvent
   let reviewFallbackNote = ''
 
   try {
+    const reviewBody =
+      decision === 'comment'
+        ? `${report.summary}\n\nNon-blocking findings are posted inline and tracked as issues; approving per repository merge policy.`
+        : report.summary
+
     const reviewPayload = {
       owner: context.repo.owner,
       repo: context.repo.repo,
       pull_number: pull.number,
       commit_id: pull.head.sha,
       event: reviewEvent,
-      body: report.summary,
+      body: reviewBody,
     }
 
     if (inlineComments.length > 0) {
