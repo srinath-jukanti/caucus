@@ -21,6 +21,24 @@ def test_verify_command_reports_intact_log(tmp_path):
     assert "chain intact" in result.output
 
 
+def test_deliberate_rejects_non_object_evidence(tmp_path):
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text('["just a string"]')
+    result = runner.invoke(
+        app,
+        ["deliberate", "subject", "--evidence", str(evidence), "--log", str(tmp_path / "d.jsonl")],
+    )
+    assert result.exit_code == 2
+
+
+def test_deliberate_requires_model_for_openai_backend(tmp_path):
+    result = runner.invoke(
+        app,
+        ["deliberate", "subject", "--backend", "openai", "--log", str(tmp_path / "d.jsonl")],
+    )
+    assert result.exit_code == 2
+
+
 def test_verify_command_fails_on_tampered_log(tmp_path):
     log = DecisionLog(tmp_path / "decisions.jsonl")
     log.append(DecisionRecord(subject="subject", decision="yes", confidence=1.0))

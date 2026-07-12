@@ -39,6 +39,28 @@ uv run caucus version
 
 Everything is inspectable with `cat` and `sqlite3`. No vector database, no hosted service, no telemetry.
 
+## Deliberate
+
+```bash
+uv run caucus deliberate "Adopt library X for feature Y?" --evidence evidence.json
+```
+
+Three analysts — an advocate, a skeptic, and an assessor — argue over your evidence in parallel. A chair weighs the arguments — votes are not counted — and the verdict, every position, and the overruled dissent land in the hash-chained log:
+
+```
+DECISION (75% confidence): Adopt it, with guardrails.
+DISSENT [skeptic]: hidden costs in the integration surface
+On the record: decisions.jsonl (hash 3f9c2a81d0b4…)
+```
+
+**Provider-agnostic by construction:** a backend is anything with `complete(prompt) -> str`. The default is the locally authenticated Claude Code CLI (zero API keys); `--backend openai --model <m> --base-url <url>` reaches any OpenAI-compatible provider — OpenAI, Ollama, vLLM, Groq, Together, OpenRouter — via the optional `caucus[openai]` extra:
+
+```bash
+uv run caucus deliberate "Adopt library X?" --backend openai --model llama3.1 --base-url http://localhost:11434/v1
+```
+
+Evidence and panel positions are fenced behind unforgeable random-token delimiters and framed as *data, never instructions* — prompt-injection resistance is a design rule, not an afterthought. Bring your own panel (`caucus.engine.Analyst`) or backend.
+
 ## The decision record
 
 The record format is a versioned, open specification — see [SPEC.md](SPEC.md). Each record embeds its predecessor's SHA-256, so editing a record invalidates its own hash and deleting one breaks its successor's link:

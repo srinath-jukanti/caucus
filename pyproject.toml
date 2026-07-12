@@ -11,6 +11,9 @@ dependencies = [
     "typer>=0.15",
 ]
 
+[project.optional-dependencies]
+openai = ["openai>=1.50"]
+
 [project.urls]
 Repository = "https://github.com/srinath-jukanti/caucus"
 
