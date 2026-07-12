@@ -27,8 +27,12 @@ jobs:
       - name: Switch to evidence branch
         shell: bash
         run: |
-          git fetch origin evidence:evidence 2>/dev/null && git checkout evidence \
-            || git checkout --orphan evidence && git rm -rfq . 2>/dev/null || true
+          if git fetch origin evidence:evidence 2>/dev/null; then
+            git checkout evidence
+          else
+            git checkout --orphan evidence
+            git rm -rfq . 2>/dev/null || true
+          fi
 
       - name: Capture snapshot
         shell: bash
