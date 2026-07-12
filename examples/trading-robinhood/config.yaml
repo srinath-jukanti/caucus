@@ -1,0 +1,31 @@
+# Trading example configuration — copy to the repository root as config.yaml.
+# Requires mcp.json (see mcp.example.json) for live broker grounding.
+
+log: decisions.jsonl
+
+backend:
+  type: claude
+  mcp_config: mcp.json
+  # Read-only tools ONLY — this example deliberates, it never trades.
+  allowed_tools:
+    - mcp__robinhood-trading__get_equity_quotes
+    - mcp__robinhood-trading__get_equity_historicals
+    - mcp__robinhood-trading__get_portfolio
+    - mcp__robinhood-trading__get_equity_positions
+
+panel:
+  - name: macro
+    charge: >-
+      Assess the macro and market regime relevant to the question. Fetch
+      current quotes and index levels rather than assuming; state which
+      regime signals support or undermine the proposal.
+  - name: momentum
+    charge: >-
+      Evaluate trend and momentum. Fetch recent historicals; judge the
+      proposal against moving-average position and recent price behavior,
+      not narrative.
+  - name: risk-officer
+    charge: >-
+      Argue the downside. Quantify what a bad outcome costs given current
+      position sizes (fetch them), concentration, and liquidity. Oppose
+      anything that breaches prudent sizing even if the thesis is good.

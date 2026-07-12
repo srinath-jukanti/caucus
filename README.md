@@ -88,9 +88,13 @@ OK — 1 records, chain intact
 
 Change any recorded value — a decision, a dissent, a confidence, the presence or order of records — and `verify` fails, naming the record and the reason. (Hashes cover each record's canonical form, so semantically equivalent re-serializations are normalized rather than flagged.) Both properties are enforced by tests, not by promises.
 
+## Example
+
+[`examples/trading-robinhood/`](examples/trading-robinhood/) is the reference example — a sanitized distillation of the private system Caucus was extracted from, which has deliberated real portfolio decisions headless, twice a day, on the author's own money since June 2026. It includes a fictional-evidence dry run that needs no brokerage and no API keys, and a live configuration that grounds a macro/momentum/risk panel in read-only Robinhood MCP tools. It deliberates and records; it never trades.
+
 ## Status
 
-Early and moving fast. The engine is being extracted, vertical slice by vertical slice, from a private trading agent that has run headless twice a day on real money since June 2026 — that system is the reference implementation and will ship (sanitized) as `examples/trading-robinhood/`.
+The v1 core is complete: the hash-chained decision record ([SPEC.md](SPEC.md)), the deliberation engine, provider-agnostic backends, configuration, and the MCP evidence layer — extracted vertical slice by vertical slice from the reference system, every PR adversarially reviewed in public.
 
 ## License
 

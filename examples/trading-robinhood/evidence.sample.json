@@ -1,0 +1,22 @@
+[
+  {
+    "source": "quotes",
+    "ref": "ACME",
+    "content": "ACME last 102.40, +1.2% today; 200-day average 94.10 (price above); 50-day average 99.80 (price above)"
+  },
+  {
+    "source": "historicals",
+    "ref": "ACME 12-1 momentum",
+    "content": "Trailing 12-month return excluding the last month: +18.4%; 20-day realized volatility: moderate"
+  },
+  {
+    "source": "portfolio",
+    "ref": "ACME position",
+    "content": "Current ACME weight 3.1% of the book versus a 5% target; cash reserve 12%"
+  },
+  {
+    "source": "news",
+    "ref": "https://example.com/acme-q2",
+    "content": "ACME beat Q2 estimates and raised full-year guidance by 5%; one analyst downgrade citing valuation"
+  }
+]
