@@ -1,0 +1,69 @@
+name: Evidence snapshot
+
+# GitHub's traffic API retains only 14 days of views/clones — this weekly
+# snapshot preserves adoption history (stars, forks, traffic, referrers, PyPI
+# downloads) as append-only JSONL on the 'evidence' branch.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    name: Capture adoption metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout evidence branch (create if absent)
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Switch to evidence branch
+        shell: bash
+        run: |
+          git fetch origin evidence:evidence 2>/dev/null && git checkout evidence \
+            || git checkout --orphan evidence && git rm -rfq . 2>/dev/null || true
+
+      - name: Capture snapshot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo="$GITHUB_REPOSITORY"
+          date=$(date -u +%Y-%m-%d)
+          repo_json=$(gh api "repos/$repo")
+          views=$(gh api "repos/$repo/traffic/views" 2>/dev/null || echo '{}')
+          clones=$(gh api "repos/$repo/traffic/clones" 2>/dev/null || echo '{}')
+          referrers=$(gh api "repos/$repo/traffic/popular/referrers" 2>/dev/null || echo '[]')
+          pypi=$(curl -fsS "https://pypistats.org/api/packages/caucus/recent" 2>/dev/null || echo '{}')
+          jq -cn \
+            --arg date "$date" \
+            --argjson repo "$repo_json" \
+            --argjson views "$views" \
+            --argjson clones "$clones" \
+            --argjson referrers "$referrers" \
+            --argjson pypi "$pypi" \
+            '{date: $date,
+              stars: $repo.stargazers_count,
+              forks: $repo.forks_count,
+              open_issues: $repo.open_issues_count,
+              views: {count: $views.count, uniques: $views.uniques},
+              clones: {count: $clones.count, uniques: $clones.uniques},
+              referrers: $referrers,
+              pypi_recent: $pypi.data}' >> adoption.jsonl
+          tail -1 adoption.jsonl
+
+      - name: Commit snapshot
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add adoption.jsonl
+          git commit -m "Evidence snapshot $(date -u +%Y-%m-%d)"
+          git push origin evidence
