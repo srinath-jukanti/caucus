@@ -274,6 +274,11 @@ class DecisionLog:
                     return VerifyResult(
                         ok=False, count=count, broken_at=index, reason="duplicate key"
                     )
+                except RecursionError:
+                    # Adversarially deep nesting must fail structurally, not crash.
+                    return VerifyResult(
+                        ok=False, count=count, broken_at=index, reason="malformed record"
+                    )
                 if not isinstance(payload, dict):
                     return VerifyResult(
                         ok=False, count=count, broken_at=index, reason="malformed record"
@@ -300,8 +305,9 @@ class DecisionLog:
         try:
             head = _parse_strict(self.head_path.read_text(encoding="utf-8"))
             expected_count, expected_hash = head["count"], head["head_hash"]
-        except (ValueError, KeyError, TypeError):
-            # ValueError covers JSONDecodeError, UnicodeDecodeError, and duplicate keys.
+        except (ValueError, KeyError, TypeError, RecursionError):
+            # ValueError covers JSONDecodeError, UnicodeDecodeError, and duplicate keys;
+            # RecursionError covers adversarially deep nesting.
             return VerifyResult(ok=False, count=count, reason="malformed head checkpoint")
         if expected_count != count or expected_hash != prev:
             return VerifyResult(

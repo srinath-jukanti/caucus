@@ -248,6 +248,16 @@ def test_verify_rejects_nested_duplicate_keys(log):
     assert result.reason == "duplicate key"
 
 
+def test_verify_reports_adversarially_deep_json(log):
+    log.append(make_record())
+    depth = 100_000
+    with log.path.open("a") as f:
+        f.write("[" * depth + "]" * depth + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "malformed record"
+
+
 def test_verify_reports_checkpoint_with_invalid_encoding(log):
     log.append(make_record())
     log.head_path.write_bytes(b"\xff\xfe")
