@@ -123,6 +123,37 @@ jobs:
             const postReview = require("./.github/codex/scripts/post-review.cjs");
             await postReview({ github, context, core });
 
+      - name: File non-blocking findings as an issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f codex-review.json ] || exit 0
+          decision=$(node -e "const r=require('./codex-review.json'); console.log(r.decision || '')")
+          [ "$decision" = "comment" ] || exit 0
+          count=$(node -e "const r=require('./codex-review.json'); console.log((r.findings||[]).length)")
+          [ "$count" -gt 0 ] || exit 0
+
+          title="Non-blocking review findings from PR #${PR_NUMBER}"
+          body=$(node -e "
+            const r = require('./codex-review.json');
+            const lines = ['Non-blocking findings from the automated review of PR #' + process.env.PR_NUMBER + ' (decision: comment):', ''];
+            for (const f of r.findings || []) {
+              lines.push('- **' + f.severity + '/' + f.category + '** ' + f.path + ':' + (f.line || '?') + ' — ' + f.title + ': ' + f.body);
+            }
+            console.log(lines.join('\n'));
+          ")
+
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$title\"" --json number -q '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+
       - name: Post commit status
         if: always()
         shell: bash
@@ -138,6 +169,11 @@ jobs:
             if [ "$decision" = "approve" ]; then
               state="success"
               description="Code review passed"
+            elif [ "$decision" = "comment" ]; then
+              # Non-blocking findings gate nothing: they are filed as issues above.
+              # Only an explicit request_changes (blocker/high) blocks the merge.
+              state="success"
+              description="Code review passed with non-blocking findings (filed as issues)"
             else
               state="failure"
               description="Code review: changes requested"
@@ -162,8 +198,8 @@ jobs:
             exit 0
           fi
           decision=$(node -e "const r=require('./codex-review.json'); console.log(r.decision || '')")
-          if [ "$decision" = "approve" ]; then
-            echo "Bot approved PR #${PR_NUMBER}; enabling auto-merge."
+          if [ "$decision" = "approve" ] || [ "$decision" = "comment" ]; then
+            echo "Bot decision is '${decision}' (non-blocking); enabling auto-merge."
             gh pr merge "$PR_NUMBER" --auto --squash --repo "$GITHUB_REPOSITORY" || true
           else
             echo "Bot decision is '${decision}'; skipping auto-merge."
