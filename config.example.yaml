@@ -6,6 +6,15 @@ log: decisions.jsonl
 # Standing plans injected into every deliberation as evidence (see 'caucus intents').
 # intents: intents.db
 
+# Commands whose JSON output becomes evidence — keep deterministic computation
+# (indicators, snapshots) in plain code; the panel reasons over the numbers.
+# Each must print a JSON list of {source, ref, content, ...} objects; a broken
+# source aborts the deliberation rather than proceeding on missing data.
+# evidence_sources:
+#   - name: market-snapshot
+#     command: python3 build_snapshot_evidence.py
+#     timeout_seconds: 120
+
 backend:
   type: claude                # the locally authenticated Claude Code CLI; no API key
   # MCP evidence layer: declare servers and the tools analysts may call, and

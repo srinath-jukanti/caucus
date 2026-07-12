@@ -148,6 +148,17 @@ def deliberate(
         panel = loaded.panel
         if log == Path("decisions.jsonl"):
             log = loaded.log
+        if loaded.evidence_sources:
+            from caucus.evidence import EvidenceError, collect
+
+            try:
+                # Deterministic computation stays outside the model: sources
+                # print JSON evidence, and a broken source aborts the run
+                # rather than deliberating on silently missing data.
+                items = items + collect(loaded.evidence_sources)
+            except EvidenceError as err:
+                typer.echo(str(err), err=True)
+                raise typer.Exit(2) from err
         if loaded.intents is not None:
             from caucus.intents import IntentStore
 

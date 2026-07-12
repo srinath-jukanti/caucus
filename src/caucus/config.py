@@ -13,6 +13,7 @@ import yaml
 
 from caucus.backends import Backend, ClaudeCodeBackend, OpenAICompatibleBackend
 from caucus.engine import DEFAULT_PANEL, Analyst
+from caucus.evidence import EvidenceSource
 
 
 class ConfigError(ValueError):
@@ -25,6 +26,7 @@ class Config:
     backend: Backend = field(default_factory=ClaudeCodeBackend)
     panel: list[Analyst] = field(default_factory=lambda: list(DEFAULT_PANEL))
     intents: Path | None = None
+    evidence_sources: list[EvidenceSource] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -49,6 +51,8 @@ class Config:
             config.backend = _build_backend(raw["backend"])
         if "panel" in raw:
             config.panel = _build_panel(raw["panel"])
+        if "evidence_sources" in raw:
+            config.evidence_sources = _build_evidence_sources(raw["evidence_sources"])
         return config
 
 
@@ -79,6 +83,26 @@ def _build_backend(raw: object) -> Backend:
             model=raw["model"], base_url=base_url, api_key_env=api_key_env
         )
     raise ConfigError(f"unknown backend type {kind!r} (expected 'claude' or 'openai')")
+
+
+def _build_evidence_sources(raw: object) -> list[EvidenceSource]:
+    if not isinstance(raw, list):
+        raise ConfigError("'evidence_sources' must be a list")
+    sources = []
+    for item in raw:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("name"), str)
+            or not isinstance(item.get("command"), str)
+        ):
+            raise ConfigError("each evidence source needs a string 'name' and 'command'")
+        timeout = item.get("timeout_seconds", 120.0)
+        if isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0:
+            raise ConfigError("'timeout_seconds' must be a positive number")
+        sources.append(
+            EvidenceSource(name=item["name"], command=item["command"], timeout_seconds=timeout)
+        )
+    return sources
 
 
 def _build_panel(raw: object) -> list[Analyst]:
