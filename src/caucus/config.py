@@ -27,7 +27,12 @@ class Config:
 
     @classmethod
     def load(cls, path: Path) -> Config:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except OSError as err:
+            raise ConfigError(f"cannot read config file: {err}") from err
+        except yaml.YAMLError as err:
+            raise ConfigError(f"invalid YAML: {err}") from err
         if not isinstance(raw, dict):
             raise ConfigError("config root must be a mapping")
         config = cls()
@@ -45,17 +50,26 @@ def _build_backend(raw: object) -> Backend:
         raise ConfigError("'backend' must be a mapping")
     kind = raw.get("type", "claude")
     if kind == "claude":
-        return ClaudeCodeBackend(
-            mcp_config=raw.get("mcp_config"),
-            allowed_tools=tuple(raw.get("allowed_tools", ())),
-        )
+        mcp_config = raw.get("mcp_config")
+        if mcp_config is not None and not isinstance(mcp_config, str):
+            raise ConfigError("'mcp_config' must be a string path")
+        allowed_tools = raw.get("allowed_tools") or []
+        if not isinstance(allowed_tools, list) or not all(
+            isinstance(tool, str) for tool in allowed_tools
+        ):
+            raise ConfigError("'allowed_tools' must be a list of strings")
+        return ClaudeCodeBackend(mcp_config=mcp_config, allowed_tools=tuple(allowed_tools))
     if kind == "openai":
         if not isinstance(raw.get("model"), str):
             raise ConfigError("openai backend requires a string 'model'")
+        base_url = raw.get("base_url")
+        if base_url is not None and not isinstance(base_url, str):
+            raise ConfigError("'base_url' must be a string")
+        api_key_env = raw.get("api_key_env", "OPENAI_API_KEY")
+        if not isinstance(api_key_env, str):
+            raise ConfigError("'api_key_env' must be a string")
         return OpenAICompatibleBackend(
-            model=raw["model"],
-            base_url=raw.get("base_url"),
-            api_key_env=raw.get("api_key_env", "OPENAI_API_KEY"),
+            model=raw["model"], base_url=base_url, api_key_env=api_key_env
         )
     raise ConfigError(f"unknown backend type {kind!r} (expected 'claude' or 'openai')")
 

@@ -73,10 +73,36 @@ backend:
         "- just\n- a list\n",
         "backend:\n  type: gemini\n",
         "backend:\n  type: openai\n",
+        "backend:\n  type: openai\n  model: m\n  base_url: [not, a, string]\n",
+        "backend:\n  type: openai\n  model: m\n  api_key_env: 42\n",
+        "backend:\n  type: claude\n  mcp_config: [list]\n",
+        "backend:\n  type: claude\n  allowed_tools: mcp__one__tool\n",
         "panel: []\n",
         "panel:\n  - name: onlyname\n",
+        "{unclosed\n",
     ],
 )
 def test_invalid_configs_are_rejected(tmp_path, text):
     with pytest.raises(ConfigError):
         Config.load(write(tmp_path, text))
+
+
+def test_missing_config_file_is_a_config_error(tmp_path):
+    with pytest.raises(ConfigError, match="cannot read"):
+        Config.load(tmp_path / "does-not-exist.yaml")
+
+
+def test_mcp_backend_carries_tool_output_guard(tmp_path):
+    from caucus.backends import TOOL_OUTPUT_GUARD
+
+    config = Config.load(write(tmp_path, "backend:\n  type: claude\n  mcp_config: .mcp.json\n"))
+    command = config.backend._command("hello")
+    assert TOOL_OUTPUT_GUARD in command
+    assert command[command.index("--append-system-prompt") + 1] == TOOL_OUTPUT_GUARD
+
+
+def test_plain_claude_backend_has_no_tool_guard():
+    from caucus.backends import TOOL_OUTPUT_GUARD, ClaudeCodeBackend
+
+    command = ClaudeCodeBackend()._command("hello")
+    assert TOOL_OUTPUT_GUARD not in command
