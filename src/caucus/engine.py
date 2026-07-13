@@ -14,7 +14,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from caucus.backends import Backend
+from caucus.backends import Backend, BackendError
 from caucus.record import DecisionLog, DecisionRecord, _valid_confidence
 
 STANCES = ("for", "against", "mixed")
@@ -105,10 +105,16 @@ def _braced(text: str) -> list[str]:
 
 
 def _ask(backend: Backend, prompt: str, valid, who: str, attempts: int = 2) -> dict:
-    """Query an agent, retrying once on malformed or invalid output."""
+    """Query an agent, retrying once on backend failure or malformed/invalid output."""
     problem = "no attempts made"
     for _ in range(attempts):
-        response = backend.complete(prompt)
+        try:
+            response = backend.complete(prompt)
+        except BackendError as err:
+            # Transient backend failures (rate limits, blips) get the same
+            # retry budget as malformed output instead of killing the run.
+            problem = str(err)
+            continue
         try:
             payload = _extract_json(response)
         except EngineError as err:

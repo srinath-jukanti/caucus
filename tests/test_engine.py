@@ -174,3 +174,28 @@ def test_openai_backend_uses_injected_client():
     assert backend.complete("hello") == '{"stance": "for"}'
     assert captured["model"] == "test-model"
     assert captured["messages"] == [{"role": "user", "content": "hello"}]
+
+
+def test_backend_failures_are_retried_then_reported(log):
+    from caucus.backends import BackendError
+
+    calls = []
+
+    def flaky(prompt):
+        calls.append(prompt)
+        raise BackendError("claude exited 1: rate limited")
+
+    with pytest.raises(EngineError, match="rate limited"):
+        Deliberation(backend=CallableBackend(flaky), log=log).run("Adopt library X?")
+    assert log.verify().count == 0
+
+
+def test_claude_backend_surfaces_stderr(tmp_path):
+    from caucus.backends import BackendError, ClaudeCodeBackend
+
+    fake = tmp_path / "fake-claude"
+    fake.write_text("#!/bin/sh\necho 'usage limit reached' >&2\nexit 1\n")
+    fake.chmod(0o755)
+    backend = ClaudeCodeBackend(executable=str(fake))
+    with pytest.raises(BackendError, match="usage limit reached"):
+        backend.complete("hello")
