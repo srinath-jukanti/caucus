@@ -124,6 +124,22 @@ def _build_notifier(raw: object) -> EmailNotifier | CommandNotifier:
             if isinstance(port, bool) or not isinstance(port, int) or not 0 < port < 65536:
                 raise ConfigError("'smtp_port' must be a valid port number")
             options["smtp_port"] = port
+        if "subject_template" in raw:
+            subject_template = raw["subject_template"]
+            if not isinstance(subject_template, str) or not subject_template.strip():
+                raise ConfigError("'subject_template' must be a non-empty string")
+            try:
+                subject_template.format(date="2026-01-01", count=0)
+            except (KeyError, IndexError) as err:
+                raise ConfigError(
+                    f"'subject_template' has an unknown placeholder ({err}); "
+                    "available: {date}, {count}"
+                ) from err
+            options["subject_template"] = subject_template
+        if "template" in raw:
+            if not isinstance(raw["template"], str) or not raw["template"].strip():
+                raise ConfigError("'template' must be a non-empty string path")
+            options["template"] = raw["template"]
         return EmailNotifier(to=to, **options)
     if kind == "command":
         command = raw.get("command")

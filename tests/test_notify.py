@@ -109,3 +109,96 @@ def test_config_rejects_invalid_notify(tmp_path, text):
     path.write_text(text)
     with pytest.raises(ConfigError):
         Config.load(path)
+
+
+def make_briefing():
+    from caucus.briefing import Briefing
+    from caucus.record import DecisionRecord
+
+    record = DecisionRecord(
+        subject="Adopt library X?",
+        decision="Proceed.",
+        confidence=0.8,
+        dissent=[
+            {
+                "agent": "skeptic",
+                "stance": "against",
+                "summary": "hidden <costs>",
+                "confidence": 0.6,
+            }
+        ],
+        timestamp="2026-07-13T00:00:00+00:00",
+    )
+    record.hash = record.compute_hash()
+    return Briefing(generated_at="2026-07-13T12:00:00+00:00", records=[record])
+
+
+def test_render_template_markdown(tmp_path):
+    from caucus.briefing import render_template, template_subtype
+
+    template = tmp_path / "brief.md.j2"
+    template.write_text(
+        "{{ generated_at }}\n{% for d in decisions %}{{ d.subject }} -> {{ d.decision }}{% endfor %}"
+    )
+    body = render_template(make_briefing(), template)
+    assert "Adopt library X? -> Proceed." in body
+    assert template_subtype(template) == "plain"
+
+
+def test_render_html_template_escapes_content(tmp_path):
+    from caucus.briefing import render_template, template_subtype
+
+    template = tmp_path / "brief.html.j2"
+    template.write_text("{% for d in decisions %}{{ d.dissent[0].summary }}{% endfor %}")
+    body = render_template(make_briefing(), template)
+    # Record content is untrusted model output — HTML must be escaped.
+    assert "&lt;costs&gt;" in body
+    assert template_subtype(template) == "html"
+
+
+def test_render_template_fails_loudly_on_unknown_variable(tmp_path):
+    from caucus.briefing import TemplateRenderError, render_template
+
+    template = tmp_path / "brief.md.j2"
+    template.write_text("{{ nonexistent_variable }}")
+    with pytest.raises(TemplateRenderError, match="nonexistent_variable"):
+        render_template(make_briefing(), template)
+
+
+def test_email_notifier_sends_html_subtype(monkeypatch):
+    monkeypatch.setenv("GMAIL_ADDRESS", "me@example.com")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "app-pass")
+    notifier = EmailNotifier(to="you@example.com", smtp_factory=FakeSMTP)
+    notifier.send("s", "<h1>hello</h1>", subtype="html")
+    assert "Content-Type: text/html" in FakeSMTP.instances[0].sent[0].message
+
+
+def test_config_parses_email_templates(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        """
+notify:
+  type: email
+  to: you@example.com
+  subject_template: "[Custom] {date} ({count})"
+  template: briefing_email.html.j2
+"""
+    )
+    notify = Config.load(path).notify
+    assert notify.subject_template == "[Custom] {date} ({count})"
+    assert notify.template == "briefing_email.html.j2"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "notify:\n  type: email\n  to: a@b.c\n  subject_template: ''\n",
+        "notify:\n  type: email\n  to: a@b.c\n  subject_template: '{unknown_thing}'\n",
+        "notify:\n  type: email\n  to: a@b.c\n  template: ''\n",
+    ],
+)
+def test_config_rejects_invalid_templates(tmp_path, text):
+    path = tmp_path / "config.yaml"
+    path.write_text(text)
+    with pytest.raises(ConfigError):
+        Config.load(path)

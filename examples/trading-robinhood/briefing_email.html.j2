@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<body style="font-family: -apple-system, 'Segoe UI', sans-serif; max-width: 720px; margin: 0 auto; color: #222">
+  <h2 style="border-bottom: 2px solid #eee; padding-bottom: 8px">Caucus briefing — {{ generated_at }}</h2>
+  {% for d in decisions %}
+  <div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 14px 0">
+    <div style="color: #666; font-size: 13px; margin-bottom: 6px">{{ d.subject }}</div>
+    <p style="margin: 6px 0"><strong>DECISION ({{ (d.confidence * 100) | round | int }}%):</strong> {{ d.decision }}</p>
+    {% for p in d.dissent %}
+    <p style="color: #b00020; margin: 4px 0; font-size: 14px"><strong>DISSENT [{{ p.agent }}]:</strong> {{ p.summary }}</p>
+    {% endfor %}
+    <div style="color: #999; font-size: 11px; margin-top: 8px">record {{ d.hash[:16] }}&hellip;</div>
+  </div>
+  {% endfor %}
+  <p style="color: #999; font-size: 11px">Every decision above is on a hash-chained record &mdash; verify with <code>caucus verify</code>.</p>
+</body>
+</html>

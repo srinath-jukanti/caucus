@@ -246,9 +246,29 @@ def briefing(
         typer.echo(f"- {record.subject[:70]} → {record.decision[:90]} ({record.confidence:.0%})")
 
     if loaded.notify is not None:
+        from caucus.briefing import TemplateRenderError, render_template, template_subtype
+        from caucus.notify import EmailNotifier
+
+        body = result.to_markdown()
+        subtype = "plain"
         subject = f"[Caucus] briefing {result.generated_at[:10]} — {len(result.records)} decisions"
+        if isinstance(loaded.notify, EmailNotifier):
+            subject = loaded.notify.subject_template.format(
+                date=result.generated_at[:10], count=len(result.records)
+            )
+            if loaded.notify.template:
+                template_path = Path(loaded.notify.template)
+                if not template_path.exists():
+                    typer.echo(f"notify template {template_path} does not exist", err=True)
+                    raise typer.Exit(2)
+                try:
+                    body = render_template(result, template_path)
+                except TemplateRenderError as err:
+                    typer.echo(str(err), err=True)
+                    raise typer.Exit(2) from err
+                subtype = template_subtype(template_path)
         try:
-            loaded.notify.send(subject, result.to_markdown(), attachment_path=out)
+            loaded.notify.send(subject, body, attachment_path=out, subtype=subtype)
         except NotifyError as err:
             typer.echo(str(err), err=True)
             raise typer.Exit(1) from err
