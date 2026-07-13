@@ -24,6 +24,10 @@ class Backend(Protocol):
     def complete(self, prompt: str) -> str: ...
 
 
+class BackendError(RuntimeError):
+    """A backend call failed; the engine treats this as retryable."""
+
+
 # MCP tool results reach the model inside its own context, beyond the engine's
 # random-token fences — so the data-not-instructions rule is enforced at the
 # system-prompt level whenever tools are enabled.
@@ -50,13 +54,21 @@ class ClaudeCodeBackend:
     allowed_tools: tuple[str, ...] = ()
 
     def complete(self, prompt: str) -> str:
-        result = subprocess.run(
-            self._command(prompt),
-            capture_output=True,
-            text=True,
-            timeout=self.timeout_seconds,
-            check=True,
-        )
+        try:
+            result = subprocess.run(
+                self._command(prompt),
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as err:
+            raise BackendError(
+                f"{self.executable} timed out after {self.timeout_seconds:g}s"
+            ) from err
+        if result.returncode != 0:
+            # Surface stderr — a swallowed failure reads as a mystery traceback.
+            detail = (result.stderr or result.stdout).strip()[-300:]
+            raise BackendError(f"{self.executable} exited {result.returncode}: {detail}")
         return result.stdout
 
     def _command(self, prompt: str) -> list[str]:
@@ -87,10 +99,13 @@ class OpenAICompatibleBackend:
 
     def complete(self, prompt: str) -> str:
         client = self.client or self._make_client()
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as err:  # provider SDK exception types vary — boundary translation
+            raise BackendError(f"openai-compatible backend failed: {err}") from err
         return response.choices[0].message.content or ""
 
     def _make_client(self):
