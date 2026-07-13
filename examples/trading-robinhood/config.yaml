@@ -70,3 +70,8 @@ agenda:
 notify:
   type: email
   to: you@example.com
+  subject_template: "[Caucus] {date} — {count} decisions"
+  # Deterministic Jinja2 rendering of the email body; .html templates are
+  # delivered as HTML. Author it once (or let your agent draft it during
+  # setup) — same record, same email, every time.
+  template: briefing_email.html.j2
