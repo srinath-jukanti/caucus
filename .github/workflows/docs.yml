@@ -1,5 +1,9 @@
 name: Docs
 
+# NOTE: merges land via the review workflow's GITHUB_TOKEN, and GitHub does
+# not trigger push workflows from GITHUB_TOKEN events — so the push trigger
+# below rarely fires in practice. The daily schedule keeps the site current;
+# dispatch manually for an immediate deploy.
 on:
   push:
     branches: [main]
@@ -10,6 +14,8 @@ on:
       - SECURITY.md
       - CONTRIBUTING.md
       - .github/workflows/docs.yml
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 permissions:
