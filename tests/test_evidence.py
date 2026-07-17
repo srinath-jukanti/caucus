@@ -1,44 +1,53 @@
+import os
+import sys
+
 import pytest
 
 from caucus.config import Config, ConfigError
 from caucus.evidence import EvidenceError, EvidenceSource, collect
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_collect_runs_sources_and_fills_defaults():
     source = EvidenceSource(
         name="snapshot",
-        command="""python3 -c 'import json; print(json.dumps([{"content": "spy above 200dma"}]))'""",
+        command=f"""{sys.executable} -c 'import json; print(json.dumps([{{"content": "spy above 200dma"}}]))'""",
     )
     items = collect([source])
     assert items == [{"content": "spy above 200dma", "source": "snapshot", "ref": "snapshot"}]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_collect_preserves_explicit_source_and_ref():
     source = EvidenceSource(
         name="snapshot",
         command=(
-            "python3 -c 'import json; "
+            f"{sys.executable} -c 'import json; "
             'print(json.dumps([{"source": "quotes", "ref": "SPY", "content": "x"}]))\''
         ),
     )
     assert collect([source])[0]["source"] == "quotes"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_failing_source_aborts():
     with pytest.raises(EvidenceError, match="exited 3"):
         collect([EvidenceSource(name="broken", command="echo boom >&2; exit 3")])
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_non_json_output_aborts():
     with pytest.raises(EvidenceError, match="did not print JSON"):
         collect([EvidenceSource(name="text", command="echo not json")])
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_non_list_output_aborts():
     with pytest.raises(EvidenceError, match="list of objects"):
         collect([EvidenceSource(name="dict", command="echo '{}'")])
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_timeout_kills_the_whole_process_tree():
     import time
 
@@ -50,6 +59,7 @@ def test_timeout_kills_the_whole_process_tree():
     assert time.monotonic() - start < 10
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX shell syntax")
 def test_timeout_when_shell_exits_but_child_holds_pipes():
     import time
 

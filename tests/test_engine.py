@@ -190,6 +190,7 @@ def test_backend_failures_are_retried_then_reported(log):
     assert log.verify().count == 0
 
 
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX fake executable")
 def test_claude_backend_surfaces_stderr(tmp_path):
     from caucus.backends import BackendError, ClaudeCodeBackend
 

@@ -125,7 +125,9 @@ def _validate_rendered(text: str) -> None:
     """Round-trip the rendered config through the strict loader before writing."""
     import tempfile
 
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+    # encoding is load-bearing: Windows' locale default (cp1252) would write
+    # the header's em-dash as a byte the strict UTF-8 loader cannot read back.
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
         handle.write(text)
         path = Path(handle.name)
     try:

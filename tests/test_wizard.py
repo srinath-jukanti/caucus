@@ -68,7 +68,7 @@ def test_render_config_round_trips_through_loader(kwargs):
     import tempfile
     from pathlib import Path
 
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
         handle.write(text)
     Config.load(Path(handle.name))
     Path(handle.name).unlink()

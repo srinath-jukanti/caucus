@@ -57,11 +57,15 @@ def test_email_notifier_requires_env(monkeypatch):
 
 
 def test_command_notifier_runs_and_fails_loudly(tmp_path):
+    import sys
+
     marker = tmp_path / "ran.txt"
-    CommandNotifier(command=f"touch {marker}").send("s", "b")
+    write = f'"{sys.executable}" -c "import pathlib; pathlib.Path(r\'{marker}\').touch()"'
+    CommandNotifier(command=write).send("s", "b")
     assert marker.exists()
+    fail = f'"{sys.executable}" -c "raise SystemExit(3)"'
     with pytest.raises(NotifyError, match="exited 3"):
-        CommandNotifier(command="exit 3").send("s", "b")
+        CommandNotifier(command=fail).send("s", "b")
 
 
 def test_config_parses_email_notifier(tmp_path):
