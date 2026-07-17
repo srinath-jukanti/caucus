@@ -37,7 +37,9 @@ panel:
 """,
         )
     )
-    assert str(config.log) == "state/audit.jsonl"
+    from pathlib import Path as _P
+
+    assert config.log == _P("state/audit.jsonl")
     assert isinstance(config.backend, OpenAICompatibleBackend)
     assert config.backend.model == "llama3.1"
     assert config.backend.base_url == "http://localhost:11434/v1"

@@ -47,10 +47,18 @@ jobs:
 
   quality:
     # Stable required-status name for branch protection, gating the whole matrix.
+    # if: always() is load-bearing — a skipped required job counts as SUCCESS
+    # for branch protection, so this job must run and fail explicitly.
     name: Verify package
+    if: always()
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Matrix green
-        run: echo "all matrix legs passed"
+      - name: Fail unless every matrix leg passed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "matrix result: ${{ needs.test.result }}"
+            exit 1
+          fi
+          echo "all matrix legs passed"
