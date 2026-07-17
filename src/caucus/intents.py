@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS intents (
     cadence_days INTEGER,
     last_acted TEXT,
     status TEXT NOT NULL DEFAULT 'open',
+    paused_until TEXT,
     notes TEXT NOT NULL DEFAULT '',
     created TEXT NOT NULL,
     updated TEXT NOT NULL
@@ -38,6 +39,7 @@ _FIELDS = (
     "cadence_days",
     "last_acted",
     "status",
+    "paused_until",
     "notes",
     "created",
     "updated",
@@ -56,6 +58,7 @@ class Intent:
     cadence_days: int | None
     last_acted: str | None
     status: str
+    paused_until: str | None
     notes: str
     created: str
     updated: str
@@ -72,9 +75,20 @@ class Intent:
             parts.append(f"cadence_days={self.cadence_days}")
         if self.last_acted:
             parts.append(f"last_acted={self.last_acted}")
+        if self.paused_until:
+            parts.append(f"paused_until={self.paused_until}")
         if self.notes:
             parts.append(f"notes={self.notes}")
         return ", ".join(parts)
+
+
+def _validate_date(name: str, value: str | None) -> None:
+    if value is None:
+        return
+    try:
+        datetime.fromisoformat(value)
+    except (TypeError, ValueError) as err:
+        raise ValueError(f"{name} must be an ISO date (YYYY-MM-DD)") from err
 
 
 def _now() -> str:
@@ -89,6 +103,10 @@ class IntentStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute(_SCHEMA)
+            try:  # migrate stores created before paused_until existed
+                conn.execute("ALTER TABLE intents ADD COLUMN paused_until TEXT")
+            except sqlite3.OperationalError:
+                pass
 
     def add(
         self,
@@ -99,16 +117,20 @@ class IntentStore:
         cadence_days: int | None = None,
         last_acted: str | None = None,
         status: str = "open",
+        paused_until: str | None = None,
         notes: str = "",
     ) -> Intent:
         if status not in STATUSES:
             raise ValueError(f"status must be one of {STATUSES}")
+        _validate_date("paused_until", paused_until)
+        if paused_until is not None and status == "open":
+            status = "paused"
         now = _now()
         with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO intents (name, direction, target, pacing, cadence_days,"
-                " last_acted, status, notes, created, updated)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " last_acted, status, paused_until, notes, created, updated)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     name,
                     direction,
@@ -117,6 +139,7 @@ class IntentStore:
                     cadence_days,
                     last_acted,
                     status,
+                    paused_until,
                     notes,
                     now,
                     now,
@@ -143,6 +166,10 @@ class IntentStore:
             raise ValueError(f"unknown intent fields: {sorted(unknown)}")
         if "status" in fields and fields["status"] not in STATUSES:
             raise ValueError(f"status must be one of {STATUSES}")
+        if "paused_until" in fields:
+            _validate_date("paused_until", fields["paused_until"])
+            if fields["paused_until"] is not None and "status" not in fields:
+                fields["status"] = "paused"
         if not fields:
             return self.get(intent_id)
         self.get(intent_id)
@@ -155,6 +182,13 @@ class IntentStore:
         return self.get(intent_id)
 
     def list(self, status: str | None = None) -> list[Intent]:
+        # Deterministic un-pause: date-based resumes need no model in the loop.
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE intents SET status = 'open', paused_until = NULL, updated = ?"
+                " WHERE status = 'paused' AND paused_until IS NOT NULL AND paused_until <= ?",
+                (_now(), datetime.now(UTC).date().isoformat()),
+            )
         query = f"SELECT {', '.join(_FIELDS)} FROM intents"
         args: tuple = ()
         if status is not None:
