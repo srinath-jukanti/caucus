@@ -30,6 +30,7 @@ class Config:
     evidence_sources: list[EvidenceSource] = field(default_factory=list)
     agenda: list[str] = field(default_factory=list)
     notify: EmailNotifier | CommandNotifier | None = None
+    anchor_command: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> Config:
@@ -65,6 +66,10 @@ class Config:
             ):
                 raise ConfigError("'agenda' must be a non-empty list of subject strings")
             config.agenda = agenda
+        if "anchor_command" in raw:
+            if not isinstance(raw["anchor_command"], str) or not raw["anchor_command"].strip():
+                raise ConfigError("'anchor_command' must be a non-empty string")
+            config.anchor_command = raw["anchor_command"]
         if "notify" in raw and "notify_command" in raw:
             raise ConfigError("use either 'notify' or 'notify_command', not both")
         if "notify" in raw:
