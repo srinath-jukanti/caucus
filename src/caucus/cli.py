@@ -205,18 +205,24 @@ def intents_add(
     pacing: str = "",
     cadence_days: int | None = None,
     last_acted: str | None = None,
+    paused_until: str | None = None,
     notes: str = "",
 ) -> None:
-    """Record a new standing intent."""
-    intent = _intents_store(db).add(
-        name=name,
-        direction=direction,
-        target=target,
-        pacing=pacing,
-        cadence_days=cadence_days,
-        last_acted=last_acted,
-        notes=notes,
-    )
+    """Record a new standing intent (--paused-until pauses it until that date)."""
+    try:
+        intent = _intents_store(db).add(
+            name=name,
+            direction=direction,
+            target=target,
+            pacing=pacing,
+            cadence_days=cadence_days,
+            last_acted=last_acted,
+            paused_until=paused_until,
+            notes=notes,
+        )
+    except ValueError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(2) from err
     typer.echo(f"#{intent.id} {intent.summary()}")
 
 
@@ -236,17 +242,19 @@ def intents_update(
     db: Path | None = None,
     status: str | None = None,
     last_acted: str | None = None,
+    paused_until: str | None = None,
     target: str | None = None,
     pacing: str | None = None,
     cadence_days: int | None = None,
     notes: str | None = None,
 ) -> None:
-    """Update fields on an intent (e.g. --status done, --last-acted 2026-07-10)."""
+    """Update fields on an intent (e.g. --status done, --paused-until 2026-07-16)."""
     fields = {
         key: value
         for key, value in {
             "status": status,
             "last_acted": last_acted,
+            "paused_until": paused_until,
             "target": target,
             "pacing": pacing,
             "cadence_days": cadence_days,
@@ -260,6 +268,32 @@ def intents_update(
         typer.echo(str(err), err=True)
         raise typer.Exit(2) from err
     typer.echo(f"#{intent.id} {intent.summary()}")
+
+
+@intents_app.command("apply")
+def intents_apply(source: Path = Path("briefing.json"), db: Path | None = None) -> None:
+    """Apply a briefing's proposed intent updates, confirming each one."""
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        typer.echo(f"cannot read {source}: {err}", err=True)
+        raise typer.Exit(2) from err
+    proposals = payload.get("intent_proposals") or []
+    if not proposals:
+        typer.echo("(no proposals in this briefing)")
+        return
+    store = _intents_store(db)
+    applied = 0
+    for proposal in proposals:
+        line = f"intent #{proposal['id']}: {proposal['fields']} — {proposal.get('reason', '')}"
+        if not typer.confirm(f"apply {line}?", default=False):
+            continue
+        try:
+            store.update(proposal["id"], **proposal["fields"])
+            applied += 1
+        except (KeyError, ValueError, TypeError) as err:
+            typer.echo(f"  skipped: {err}", err=True)
+    typer.echo(f"applied {applied}/{len(proposals)}")
 
 
 @app.command()
@@ -376,11 +410,29 @@ def briefing(
     )
     result = run_agenda(deliberation, loaded.agenda, items)
 
+    if loaded.intents is not None:
+        from caucus.briefing import propose_intent_updates
+        from caucus.engine import EngineError
+        from caucus.intents import IntentStore
+
+        current = IntentStore(loaded.intents).list()
+        if current:
+            try:
+                # Proposals only — 'caucus intents apply' applies them with
+                # per-item confirmation. The store stays operator-controlled.
+                result.intent_proposals = propose_intent_updates(loaded.backend, current, result)
+            except EngineError as err:
+                typer.echo(f"intent-proposal step failed ({err}) — continuing", err=True)
+
     out.write_text(result.to_markdown(), encoding="utf-8")
     out.with_suffix(".json").write_text(result.to_json(), encoding="utf-8")
     typer.echo(f"briefing written: {out} ({len(result.records)} decisions)")
     for record in result.records:
         typer.echo(f"- {record.subject[:70]} → {record.decision[:90]} ({record.confidence:.0%})")
+    for proposal in result.intent_proposals or []:
+        typer.echo(
+            f"- proposed: intent #{proposal['id']} {proposal['fields']} — {proposal['reason']}"
+        )
 
     if loaded.notify is not None:
         from caucus.briefing import TemplateRenderError, render_template, template_subtype

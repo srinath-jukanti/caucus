@@ -98,3 +98,40 @@ def test_briefing_cli_requires_agenda(tmp_path, monkeypatch):
     result = runner.invoke(app, ["briefing"])
     assert result.exit_code == 2
     assert "agenda" in result.output
+
+
+def test_propose_intent_updates_validates(tmp_path, log):
+    from caucus.briefing import propose_intent_updates, run_agenda
+    from caucus.intents import IntentStore
+
+    store = IntentStore(tmp_path / "intents.db")
+    intent = store.add(name="ASML build", paused_until="2099-01-01")
+    deliberation = Deliberation(backend=backend(), log=log)
+    result = run_agenda(deliberation, ["Anything due?"])
+
+    good = {"proposals": [{"id": intent.id, "fields": {"status": "open"}, "reason": "gate passed"}]}
+    proposals = propose_intent_updates(
+        CallableBackend(lambda p: json.dumps(good)), store.list(), result
+    )
+    assert proposals == good["proposals"]
+
+    from caucus.engine import EngineError
+
+    bad = {"proposals": [{"id": 999, "fields": {"status": "open"}, "reason": "x"}]}
+    with pytest.raises(EngineError):
+        propose_intent_updates(CallableBackend(lambda p: json.dumps(bad)), store.list(), result)
+    hostile = {"proposals": [{"id": intent.id, "fields": {"name": "renamed"}, "reason": "x"}]}
+    with pytest.raises(EngineError):
+        propose_intent_updates(CallableBackend(lambda p: json.dumps(hostile)), store.list(), result)
+
+
+def test_markdown_renders_proposals(log):
+    from caucus.briefing import run_agenda
+
+    deliberation = Deliberation(backend=backend(), log=log)
+    result = run_agenda(deliberation, ["Q?"])
+    result.intent_proposals = [{"id": 1, "fields": {"status": "open"}, "reason": "gate passed"}]
+    markdown = result.to_markdown()
+    assert "Proposed intent updates" in markdown
+    assert "gate passed" in markdown
+    assert json.loads(result.to_json())["intent_proposals"]
