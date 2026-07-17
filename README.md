@@ -20,10 +20,12 @@ Caucus is a decision layer, not another agent framework. It orchestrates deliber
 Requires [uv](https://docs.astral.sh/uv/) and [Claude Code](https://claude.com/claude-code).
 
 ```bash
-git clone https://github.com/srinath-jukanti/caucus.git && cd caucus
-uv sync
-uv run caucus version
+uv tool install caucus
+caucus init          # interactive setup: backend, panel, agenda, delivery
+caucus deliberate "Adopt library X for feature Y?"
 ```
+
+Describe your use case during `caucus init` and your configured backend drafts the analyst panel and standing agenda for you — previewed, validated, and written to an editable `config.yaml`. (From source: `git clone … && uv sync && uv run caucus …`.)
 
 **Or let your AI agent set it up for you** — paste the prompt in [AGENT_SETUP.md](AGENT_SETUP.md) into Claude Code, Codex, or Cursor and it will install, configure, and verify Caucus end to end.
 
