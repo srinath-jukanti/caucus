@@ -72,7 +72,9 @@ def test_truncation_below_anchor_detected(log):
     log.path.write_text(kept + "\n")
     result = verify_anchors(log)
     assert not result.ok
-    assert "covers 3 records" in result.reason
+    # The mandatory verification pass catches this via the checkpoint before
+    # the anchor-count comparison would — either reason proves the truncation.
+    assert "truncation" in result.reason or "covers 3 records" in result.reason
 
 
 def test_cli_anchor_and_verify(tmp_path, monkeypatch):
