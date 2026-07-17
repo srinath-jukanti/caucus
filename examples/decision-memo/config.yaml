@@ -1,0 +1,24 @@
+# Decision-memo example — general-purpose deliberation over any decision.
+# No MCP, no evidence sources: bring your notes as --evidence JSON.
+
+log: decisions.jsonl
+
+backend:
+  type: claude   # the locally authenticated Claude Code CLI; no API key needed
+
+panel:
+  - name: proponent
+    charge: >-
+      Make the strongest honest case FOR the proposal, grounded strictly in
+      the evidence provided. Steelman it — if the case is weak, say how weak.
+  - name: red-team
+    charge: >-
+      Make the strongest case AGAINST. Enumerate failure modes, hidden
+      costs, second-order effects, and what breaks under pressure. Attack
+      the proposal's weakest live assumption, not a strawman.
+  - name: base-rate-realist
+    charge: >-
+      Take the outside view: how do decisions of this class usually turn
+      out, what does that base rate imply here, how reversible is this, and
+      what specifically would need to be true for this case to beat the
+      base rate?
