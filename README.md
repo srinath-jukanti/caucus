@@ -90,7 +90,9 @@ OK — 1 records, chain intact
 
 Change any recorded value — a decision, a dissent, a confidence, the presence or order of records — and `verify` fails, naming the record and the reason. (Hashes cover each record's canonical form, so semantically equivalent re-serializations are normalized rather than flagged.) Both properties are enforced by tests, not by promises.
 
-## Example
+## Examples
+
+**Start here — [`examples/decision-memo/`](examples/decision-memo/):** deliberate any real decision you're weighing (a migration, a job offer, a roadmap bet) in five minutes with no API keys. The overruled dissent stays on the record — the decision memo that argues back.
 
 [`examples/trading-robinhood/`](examples/trading-robinhood/) is the reference example — a sanitized distillation of the private system Caucus was extracted from, which has deliberated real portfolio decisions headless, twice a day, on the author's own money since June 2026. It includes a fictional-evidence dry run that needs no brokerage and no API keys, and a live configuration that grounds a macro/momentum/risk panel in read-only Robinhood MCP tools. It deliberates and records; it never trades.
 

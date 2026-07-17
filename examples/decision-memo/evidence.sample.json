@@ -1,0 +1,27 @@
+[
+  {
+    "source": "metrics",
+    "ref": "current load",
+    "content": "Postgres p99 8ms at 2k QPS; single writer at 60% CPU during peak; storage growing ~40GB/month"
+  },
+  {
+    "source": "team",
+    "ref": "experience",
+    "content": "Team of 6; deep Postgres experience; nobody has operated DynamoDB in production"
+  },
+  {
+    "source": "finance",
+    "ref": "cost estimate",
+    "content": "DynamoDB provisioned-capacity quote lands at ~2.1x current RDS spend at projected year-2 scale, before caching"
+  },
+  {
+    "source": "product",
+    "ref": "access patterns",
+    "content": "80% of queries are key-value by tenant id; 20% are ad-hoc relational reports the finance team runs weekly"
+  },
+  {
+    "source": "roadmap",
+    "ref": "timeline pressure",
+    "content": "A compliance launch is due in 5 months; the migration window would overlap its final quarter"
+  }
+]
