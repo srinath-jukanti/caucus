@@ -32,6 +32,16 @@
         <div style="margin-top:10px;font-size:11px;color:#9ca3af;font-family:ui-monospace,Menlo,Consolas,monospace;">record {{ d.hash[:16] }}&hellip;</div>
       </div>
       {% endfor %}
+    {% if intent_proposals %}
+    <div style="margin:0 18px 8px;">
+      <div style="font-size:12px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.6px;">Proposed intent updates &mdash; apply with <code>caucus intents apply</code></div>
+      {% for p in intent_proposals %}
+      <div style="font-size:12px;color:#6b7280;padding:7px 0;border-top:1px solid #f1f1f1;line-height:1.5;">
+        <span style="color:#9ca3af;font-weight:700;">intent #{{ p.id }}</span> &mdash; {{ p.fields }} &middot; {{ p.reason }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     </div>
 
     <div style="padding:14px 22px;background:#fafbfc;border-top:1px solid #eef0f2;font-size:11px;color:#9ca3af;line-height:1.5;">
