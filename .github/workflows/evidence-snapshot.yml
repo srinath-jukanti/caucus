@@ -41,11 +41,16 @@ jobs:
         run: |
           repo="$GITHUB_REPOSITORY"
           date=$(date -u +%Y-%m-%d)
+          # Traffic endpoints can return 202 with an EMPTY body while GitHub is
+          # still computing stats, and pypistats can serve non-JSON error pages —
+          # validate every fragment or jq --argjson dies with exit 2.
+          ensure_json() { echo "$1" | jq -e . >/dev/null 2>&1 && echo "$1" || echo "$2"; }
           repo_json=$(gh api "repos/$repo")
-          views=$(gh api "repos/$repo/traffic/views" 2>/dev/null || echo '{}')
-          clones=$(gh api "repos/$repo/traffic/clones" 2>/dev/null || echo '{}')
-          referrers=$(gh api "repos/$repo/traffic/popular/referrers" 2>/dev/null || echo '[]')
-          pypi=$(curl -fsS "https://pypistats.org/api/packages/caucus/recent" 2>/dev/null || echo '{}')
+          repo_json=$(ensure_json "$repo_json" '{}')
+          views=$(ensure_json "$(gh api "repos/$repo/traffic/views" 2>/dev/null || true)" '{}')
+          clones=$(ensure_json "$(gh api "repos/$repo/traffic/clones" 2>/dev/null || true)" '{}')
+          referrers=$(ensure_json "$(gh api "repos/$repo/traffic/popular/referrers" 2>/dev/null || true)" '[]')
+          pypi=$(ensure_json "$(curl -fsS "https://pypistats.org/api/packages/caucus/recent" 2>/dev/null || true)" '{}')
           jq -cn \
             --arg date "$date" \
             --argjson repo "$repo_json" \
