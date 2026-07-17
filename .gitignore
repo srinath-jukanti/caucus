@@ -8,3 +8,7 @@ dist/
 /config.yaml
 /mcp.json
 state/
+docs/spec.md
+docs/security.md
+docs/contributing.md
+site/

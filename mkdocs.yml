@@ -1,0 +1,28 @@
+site_name: Caucus
+site_description: Your AI agents, deliberating on the record.
+site_url: https://srinath-jukanti.github.io/caucus/
+repo_url: https://github.com/srinath-jukanti/caucus
+repo_name: srinath-jukanti/caucus
+
+theme:
+  name: material
+  palette:
+    scheme: default
+    primary: black
+  features:
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Configuration: configuration.md
+  - Examples: examples.md
+  - Decision Record Spec: spec.md
+  - Security: security.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences
