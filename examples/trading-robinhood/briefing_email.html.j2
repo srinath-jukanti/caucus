@@ -1,17 +1,42 @@
 <!doctype html>
 <html>
-<body style="font-family: -apple-system, 'Segoe UI', sans-serif; max-width: 720px; margin: 0 auto; color: #222">
-  <h2 style="border-bottom: 2px solid #eee; padding-bottom: 8px">Caucus briefing — {{ generated_at }}</h2>
-  {% for d in decisions %}
-  <div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 14px 0">
-    <div style="color: #666; font-size: 13px; margin-bottom: 6px">{{ d.subject }}</div>
-    <p style="margin: 6px 0"><strong>DECISION ({{ (d.confidence * 100) | round | int }}%):</strong> {{ d.decision }}</p>
-    {% for p in d.dissent %}
-    <p style="color: #b00020; margin: 4px 0; font-size: 14px"><strong>DISSENT [{{ p.agent }}]:</strong> {{ p.summary }}</p>
-    {% endfor %}
-    <div style="color: #999; font-size: 11px; margin-top: 8px">record {{ d.hash[:16] }}&hellip;</div>
+<body style="margin:0;background:#f4f5f7;padding:24px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e8eaed;border-radius:14px;overflow:hidden;">
+
+    <div style="padding:22px 22px 18px;border-bottom:1px solid #eef0f2;">
+      <div style="font-size:11px;color:#9ca3af;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;">Caucus &middot; Deliberation</div>
+      <div style="margin-top:6px;font-size:21px;font-weight:700;color:#111827;">Briefing</div>
+      <div style="margin-top:12px;">
+        <span style="display:inline-block;background:#374151;color:#fff;font-size:11px;font-weight:600;letter-spacing:.3px;padding:3px 10px;border-radius:999px;vertical-align:middle;">{{ decisions | length }} DECISIONS</span>
+        <span style="font-size:13px;color:#6b7280;">&nbsp; {{ generated_at }}</span>
+      </div>
+    </div>
+
+    <div style="padding:6px 18px 22px;">
+      {% for d in decisions %}
+      {% set pct = (d.confidence * 100) | round | int %}
+      {% set accent = '#16a34a' if d.confidence >= 0.75 else ('#d97706' if d.confidence >= 0.6 else '#6b7280') %}
+      <div style="border:1px solid #e8eaed;border-left:4px solid {{ accent }};border-radius:9px;padding:14px 16px;margin:14px 0;background:#fff;">
+        <div style="font-size:12px;color:#6b7280;line-height:1.5;">{{ d.subject }}</div>
+        <div style="margin-top:9px;">
+          <span style="display:inline-block;background:{{ accent }};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;">{{ pct }}%</span>
+          <span style="font-size:12px;font-weight:700;color:{{ accent }};text-transform:uppercase;letter-spacing:.5px;">&nbsp;Decision</span>
+        </div>
+        <div style="margin-top:7px;font-size:13px;color:#111827;line-height:1.6;">{{ d.decision }}</div>
+        {% for p in d.dissent %}
+        <div style="margin-top:9px;background:#fef2f2;border:1px solid #fde8e8;border-radius:6px;padding:8px 11px;">
+          <div style="font-size:11px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.5px;">Dissent &middot; {{ p.agent }}</div>
+          <div style="margin-top:4px;font-size:12px;color:#7f1d1d;line-height:1.5;">{{ p.summary }}</div>
+        </div>
+        {% endfor %}
+        <div style="margin-top:10px;font-size:11px;color:#9ca3af;font-family:ui-monospace,Menlo,Consolas,monospace;">record {{ d.hash[:16] }}&hellip;</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="padding:14px 22px;background:#fafbfc;border-top:1px solid #eef0f2;font-size:11px;color:#9ca3af;line-height:1.5;">
+      Every decision above &mdash; including each overruled dissent &mdash; is on a hash-chained, tamper-evident record. Verify with <code>caucus verify</code>. Not financial advice.
+    </div>
   </div>
-  {% endfor %}
-  <p style="color: #999; font-size: 11px">Every decision above is on a hash-chained record &mdash; verify with <code>caucus verify</code>.</p>
 </body>
 </html>
