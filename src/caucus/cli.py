@@ -18,6 +18,143 @@ def main() -> None:
     """Caucus — AI agents deliberating on the record."""
 
 
+@app.command()
+def init(directory: Path = Path("."), force: bool = False) -> None:
+    """Interactive setup — configure backend, panel, agenda, and delivery once.
+
+    Describe your use case and the configured backend drafts an analyst panel
+    and standing agenda for you (previewed before anything is written); every
+    answer lands in an editable config.yaml.
+    """
+    import shutil
+
+    from caucus.wizard import WizardError, draft_panel_and_agenda, render_config
+
+    config_path = directory / "config.yaml"
+    if config_path.exists() and not force:
+        typer.echo(f"{config_path} already exists — rerun with --force to overwrite", err=True)
+        raise typer.Exit(2)
+
+    typer.echo("Caucus setup — answers become config.yaml; everything is editable later.\n")
+
+    backend_kind = typer.prompt(
+        "Backend: 'claude' (local Claude Code CLI, no API key) or 'openai' "
+        "(any OpenAI-compatible provider)",
+        default="claude",
+    )
+    if backend_kind not in ("claude", "openai"):
+        typer.echo("backend must be 'claude' or 'openai'", err=True)
+        raise typer.Exit(2)
+
+    model = base_url = api_key_env = mcp_config = None
+    allowed_tools: list[str] = []
+    if backend_kind == "openai":
+        model = typer.prompt("Model (e.g. gpt-4o, llama3.1)")
+        base_url = (
+            typer.prompt(
+                "Base URL (blank for api.openai.com; e.g. http://localhost:11434/v1 for Ollama)",
+                default="",
+                show_default=False,
+            )
+            or None
+        )
+        api_key_env = typer.prompt("Env var holding the API key", default="OPENAI_API_KEY")
+    else:
+        if shutil.which("claude") is None:
+            typer.echo(
+                "note: 'claude' not found on PATH — install Claude Code before deliberating."
+            )
+        mcp_config = (
+            typer.prompt(
+                "MCP config path to ground analysts in live tools (blank = none)",
+                default="",
+                show_default=False,
+            )
+            or None
+        )
+        if mcp_config:
+            tools = typer.prompt(
+                "Comma-separated allowed tool names (read-only tools recommended)",
+                default="",
+                show_default=False,
+            )
+            allowed_tools = [tool.strip() for tool in tools.split(",") if tool.strip()]
+
+    panel = agenda = None
+    description = typer.prompt(
+        "Describe what you'll deliberate about and your backend will draft a "
+        "panel + agenda (blank = generic defaults)",
+        default="",
+        show_default=False,
+    ).strip()
+    if description:
+        if backend_kind == "claude":
+            from caucus.backends import ClaudeCodeBackend
+
+            draft_backend = ClaudeCodeBackend()
+        else:
+            from caucus.backends import OpenAICompatibleBackend
+
+            draft_backend = OpenAICompatibleBackend(
+                model=model, base_url=base_url, api_key_env=api_key_env or "OPENAI_API_KEY"
+            )
+        typer.echo("drafting panel + agenda…")
+        try:
+            panel, agenda = draft_panel_and_agenda(draft_backend, description)
+        except Exception as err:  # any backend/engine failure degrades to defaults
+            typer.echo(
+                f"drafting failed ({err}); using generic defaults — edit config.yaml later.",
+                err=True,
+            )
+        else:
+            typer.echo("\nProposed panel:")
+            for analyst in panel:
+                typer.echo(f"  - {analyst.name}: {analyst.charge}")
+            typer.echo("Proposed agenda:")
+            for subject in agenda:
+                typer.echo(f"  - {subject}")
+            if not typer.confirm("Accept this draft?", default=True):
+                panel = agenda = None
+                typer.echo("using generic defaults — edit config.yaml later.")
+
+    intents = typer.confirm(
+        "Track standing plans (intents) that inform every deliberation?", default=True
+    )
+    notify_email = None
+    if typer.confirm("Email each briefing?", default=False):
+        notify_email = typer.prompt("Send to")
+        typer.echo(
+            "  → set GMAIL_ADDRESS and GMAIL_APP_PASSWORD in the environment "
+            "(Gmail: myaccount.google.com/apppasswords)."
+        )
+
+    try:
+        text = render_config(
+            backend_kind=backend_kind,
+            model=model,
+            base_url=base_url,
+            api_key_env=api_key_env,
+            mcp_config=mcp_config,
+            allowed_tools=allowed_tools,
+            panel=panel,
+            agenda=agenda,
+            intents=intents,
+            notify_email=notify_email,
+        )
+    except WizardError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(2) from err
+
+    directory.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(text, encoding="utf-8")
+    typer.echo(f"\nwrote {config_path}")
+    if intents:
+        typer.echo('next: record standing plans —  caucus intents add "..." --target ...')
+    if agenda:
+        typer.echo("run the full agenda:          caucus briefing")
+    typer.echo('or a one-off deliberation:    caucus deliberate "Your question?"')
+
+
 def _configured_evidence(loaded) -> list[dict]:
     """Collect configured evidence (external sources + open intents), fail-closed."""
     items: list[dict] = []
