@@ -1,6 +1,6 @@
 [project]
 name = "caucus"
-version = "0.3.0"
+version = "0.3.1"
 description = "Your AI agents, deliberating on the record. MCP-grounded multi-agent consensus with recorded dissent and an auditable decision log."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -99,3 +99,83 @@ def test_cli_update_reports_missing_intent(tmp_path):
     db = str(tmp_path / "intents.db")
     result = runner.invoke(app, ["intents", "update", "42", "--db", db, "--status", "done"])
     assert result.exit_code == 2
+
+
+def test_paused_until_auto_unpauses_on_read(store):
+    store.add(name="past", paused_until="2020-01-01")
+    store.add(name="future", paused_until="2099-01-01")
+    listed = {i.name: i for i in store.list()}
+    assert listed["past"].status == "open"
+    assert listed["past"].paused_until is None
+    assert listed["future"].status == "paused"
+
+
+def test_paused_until_validation(store):
+    with pytest.raises(ValueError, match="ISO date"):
+        store.add(name="bad", paused_until="soon")
+    intent = store.add(name="ok")
+    with pytest.raises(ValueError, match="ISO date"):
+        store.update(intent.id, paused_until="not-a-date")
+    updated = store.update(intent.id, paused_until="2099-05-01")
+    assert updated.status == "paused"
+
+
+def test_migration_adds_paused_until_to_old_store(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE intents (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+        " direction TEXT NOT NULL DEFAULT '', target TEXT NOT NULL DEFAULT '',"
+        " pacing TEXT NOT NULL DEFAULT '', cadence_days INTEGER, last_acted TEXT,"
+        " status TEXT NOT NULL DEFAULT 'open', notes TEXT NOT NULL DEFAULT '',"
+        " created TEXT NOT NULL, updated TEXT NOT NULL)"
+    )
+    conn.execute("INSERT INTO intents (name, created, updated) VALUES ('legacy', 't', 't')")
+    conn.commit()
+    conn.close()
+    store = IntentStore(db)
+    legacy = store.list()[0]
+    assert legacy.name == "legacy"
+    assert legacy.paused_until is None
+
+
+def test_intents_apply_cli(tmp_path, monkeypatch):
+    import json as jsonlib
+
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "intents.db"
+    store = IntentStore(db)
+    intent = store.add(name="ASML build", paused_until="2099-01-01")
+    (tmp_path / "briefing.json").write_text(
+        jsonlib.dumps(
+            {
+                "intent_proposals": [
+                    {
+                        "id": intent.id,
+                        "fields": {"status": "open", "paused_until": None},
+                        "reason": "earnings passed",
+                    },
+                    {
+                        "id": intent.id,
+                        "fields": {"notes": "should be declined"},
+                        "reason": "second proposal",
+                    },
+                ]
+            }
+        )
+    )
+    result = runner.invoke(app, ["intents", "apply", "--db", str(db)], input="y\nn\n")
+    assert result.exit_code == 0, result.output
+    assert "applied 1/2" in result.output
+    refreshed = store.get(intent.id)
+    assert refreshed.status == "open"
+    assert refreshed.notes == ""
+
+
+def test_intents_apply_empty(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "briefing.json").write_text('{"intent_proposals": []}')
+    result = runner.invoke(app, ["intents", "apply"])
+    assert "(no proposals" in result.output
