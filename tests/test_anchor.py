@@ -88,3 +88,36 @@ def test_cli_anchor_and_verify(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert "anchors OK" in result.output
+
+
+def test_verify_anchors_rejects_tampered_log_with_stale_stored_hashes(log):
+    log.append(make_record(subject="honest"))
+    append_anchor(log)
+    # Edit content but LEAVE the stored hash untouched — the stored-hash
+    # comparison alone would falsely certify this.
+    log.path.write_text(log.path.read_text().replace("honest", "forged"))
+    result = verify_anchors(log)
+    assert not result.ok
+    assert "fails verification" in result.reason
+
+
+def test_concurrent_appends_during_anchoring_stay_consistent(log):
+    from concurrent.futures import ThreadPoolExecutor
+
+    log.append(make_record(subject="seed"))
+
+    def appender():
+        for i in range(5):
+            DecisionLog(log.path).append(make_record(subject=f"c{i}"))
+
+    def anchorer():
+        for _ in range(5):
+            append_anchor(DecisionLog(log.path))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(appender), pool.submit(anchorer)]
+        for job in jobs:
+            job.result()
+    result = verify_anchors(log)
+    assert result.ok
+    assert result.checked == 5

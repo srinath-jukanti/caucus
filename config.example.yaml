@@ -61,4 +61,4 @@ panel:
 # Ship each anchor beyond the log's trust domain ('caucus anchor'):
 # receives the anchors-file path; a git commit+push, a curl to a
 # timestamping service, an scp — anything a local attacker cannot rewrite.
-# anchor_command: git add decisions.jsonl.anchors && git commit -qm anchor && git push -q
+# anchor_command: git add {path} && git commit -qm anchor && git push -q

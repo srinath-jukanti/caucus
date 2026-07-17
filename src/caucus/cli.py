@@ -503,7 +503,15 @@ def anchor(log: Path = Path("decisions.jsonl"), config: Path | None = None) -> N
     anchors = anchors_path_for(decision_log)
     typer.echo(f"anchored {entry['count']} records, head {entry['head_hash'][:16]}… → {anchors}")
     if anchor_command:
-        completed = subprocess.run(f"{anchor_command} {shlex.quote(str(anchors))}", shell=True)
+        quoted = shlex.quote(str(anchors))
+        # {path} substitution supports compound commands (git add {path} && ...);
+        # appending the path to the whole string would hand it to the LAST
+        # command (e.g. git push) instead.
+        if "{path}" in anchor_command:
+            command = anchor_command.replace("{path}", quoted)
+        else:
+            command = f"{anchor_command} {quoted}"
+        completed = subprocess.run(command, shell=True)
         if completed.returncode != 0:
             typer.echo(f"anchor command exited {completed.returncode}", err=True)
             raise typer.Exit(1)

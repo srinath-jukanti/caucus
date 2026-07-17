@@ -34,22 +34,29 @@ def anchors_path_for(log: DecisionLog) -> Path:
 
 
 def append_anchor(log: DecisionLog, anchors_path: Path | None = None) -> dict:
-    """Verify the log, then append its current head as an anchor entry."""
-    result = log.verify()
-    if not result.ok:
-        raise AnchorError(f"refusing to anchor a log that fails verification: {result.reason}")
-    if result.count == 0:
-        raise AnchorError("nothing to anchor: the log is empty")
-    hashes = _chain_hashes(log)
-    entry = {
-        "anchored_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "count": result.count,
-        "head_hash": hashes[-1],
-    }
-    path = anchors_path or anchors_path_for(log)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, sort_keys=True) + "\n")
-        handle.flush()
+    """Verify the log, then append its current head as an anchor entry.
+
+    The whole operation holds the log's append lock: an append landing
+    between verification and the hash read would otherwise produce an
+    anchor whose count and head disagree — permanently invalid, and anchors
+    are append-only and possibly already shipped.
+    """
+    with log._locked():
+        result = log._verify_locked()
+        if not result.ok:
+            raise AnchorError(f"refusing to anchor a log that fails verification: {result.reason}")
+        if result.count == 0:
+            raise AnchorError("nothing to anchor: the log is empty")
+        hashes = _chain_hashes(log)
+        entry = {
+            "anchored_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "count": len(hashes),
+            "head_hash": hashes[-1],
+        }
+        path = anchors_path or anchors_path_for(log)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, sort_keys=True) + "\n")
+            handle.flush()
     return entry
 
 
@@ -65,7 +72,15 @@ def verify_anchors(log: DecisionLog, anchors_path: Path | None = None) -> Anchor
     path = anchors_path or anchors_path_for(log)
     if not path.exists():
         raise AnchorError(f"no anchors file at {path}")
-    hashes = _chain_hashes(log)
+    with log._locked():
+        # A proof over an unverified chain is no proof: stored hashes are only
+        # trustworthy after full verification recomputes them.
+        plain = log._verify_locked()
+        if not plain.ok:
+            return AnchorResult(
+                ok=False, checked=0, reason=f"log fails verification: {plain.reason}"
+            )
+        hashes = _chain_hashes(log)
     checked = 0
     with path.open(encoding="utf-8") as handle:
         for index, line in enumerate(handle):
