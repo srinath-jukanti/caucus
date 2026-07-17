@@ -1,0 +1,57 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - SPEC.md
+      - SECURITY.md
+      - CONTRIBUTING.md
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    name: Build and deploy docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Assemble canonical pages
+        run: |
+          cp SPEC.md docs/spec.md
+          cp SECURITY.md docs/security.md
+          cp CONTRIBUTING.md docs/contributing.md
+          # Repo-relative links don't resolve inside the site — point them at GitHub.
+          sed -i 's|(src/caucus/record.py)|(https://github.com/srinath-jukanti/caucus/blob/main/src/caucus/record.py)|g' docs/spec.md
+
+      - name: Build site
+        run: uv run --with mkdocs-material mkdocs build --strict
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
