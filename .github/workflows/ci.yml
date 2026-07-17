@@ -14,10 +14,15 @@ permissions:
   contents: read
 
 jobs:
-  quality:
-    name: Verify package
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  test:
+    name: Test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -25,6 +30,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -37,3 +44,13 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  quality:
+    # Stable required-status name for branch protection, gating the whole matrix.
+    name: Verify package
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Matrix green
+        run: echo "all matrix legs passed"
