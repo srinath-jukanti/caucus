@@ -310,3 +310,32 @@ def test_rebuttal_frames_own_position_as_untrusted(log):
     match = __import__("re").search(r"<<<OWN-POSITION-([0-9a-f]{16})", rebuttal)
     assert match is not None
     assert rebuttal.count(match.group(1)) == 2
+
+
+def test_custom_stances_replace_the_answer_space(log):
+    letters = {
+        "advocate": {"stance": "B", "summary": "B fits the data", "confidence": 0.8},
+        "skeptic": {"stance": "C", "summary": "C is safer", "confidence": 0.6},
+        "assessor": {"stance": "B", "summary": "B on balance", "confidence": 0.7},
+    }
+    verdict = {"stance": "B", "decision": "The answer is B.", "confidence": 0.75}
+    transcript = []
+    backend = scripted_backend(letters, verdict, transcript)
+    record = Deliberation(backend=backend, log=log, stances=("A", "B", "C", "D")).run("Pick one.")
+    assert record.decision == "The answer is B."
+    assert [p["agent"] for p in record.dissent] == ["skeptic"]
+    assert all('"A" | "B" | "C" | "D"' in prompt for prompt in transcript)
+    assert log.verify().ok
+
+
+def test_stance_outside_custom_set_rejected(log):
+    off_menu = {name: {"stance": "for", "summary": "s", "confidence": 0.5} for name in POSITIONS}
+    backend = scripted_backend(off_menu, {"stance": "for", "decision": "d", "confidence": 0.5})
+    with pytest.raises(EngineError, match="invalid payload"):
+        Deliberation(backend=backend, log=log, stances=("A", "B")).run("Pick one.")
+
+
+def test_degenerate_stances_rejected(log):
+    backend = scripted_backend(POSITIONS, VERDICT)
+    with pytest.raises(ValueError, match="stances"):
+        Deliberation(backend=backend, log=log, stances=("only",))
