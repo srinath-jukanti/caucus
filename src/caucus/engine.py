@@ -183,10 +183,21 @@ def _unanimous(positions: list[dict]) -> bool:
     return len({p["stance"] for p in positions}) == 1
 
 
-def _stances_unchanged(previous: list[dict], current: list[dict]) -> bool:
-    before = {p["agent"]: p["stance"] for p in previous}
-    after = {p["agent"]: p["stance"] for p in current}
-    return before == after
+def _round_unchanged(previous: list[dict], current: list[dict]) -> bool:
+    """Nobody moved: stance, argument, AND confidence all held for every agent.
+
+    Comparing stances alone would stop a deliberation where an analyst is
+    actively revising its argument or confidence while holding its stance —
+    exactly the case later rounds exist to resolve.
+    """
+
+    def normalized(positions: list[dict]) -> dict:
+        return {
+            p["agent"]: (p["stance"], p["summary"].strip(), round(float(p["confidence"]), 4))
+            for p in positions
+        }
+
+    return normalized(previous) == normalized(current)
 
 
 @dataclass
@@ -223,7 +234,7 @@ class Deliberation:
                     )
                 )
             rounds.append(revised)
-            if _stances_unchanged(previous, revised):
+            if _round_unchanged(previous, revised):
                 break  # nobody moved — more rounds would only spend tokens
         positions = rounds[-1]
         verdict = self._verdict(subject_block, evidence_block, positions)

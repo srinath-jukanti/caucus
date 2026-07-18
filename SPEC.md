@@ -23,7 +23,7 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | string | `"0.1"` |
+| `schema_version` | string | `"0.1"`, or `"0.2"` when (and only when) `rounds` is present |
 | `timestamp` | string | ISO 8601 with an explicit UTC offset (`Z` or `+00:00`); naive or non-UTC timestamps do not conform |
 | `subject` | string | what was deliberated |
 | `positions` | array of objects | one per agent: `agent`, `stance`, `summary` (strings) and `confidence` (number, 0–1) |
@@ -31,6 +31,7 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 | `dissent` | array of objects | positions that disagreed with the outcome — same entry shape as `positions`, recorded, never dropped |
 | `confidence` | number | consensus confidence, 0–1 |
 | `evidence` | array of objects | citations grounding the decision: `source` and `ref` (strings) |
+| `rounds` | array of arrays (0.2 only, optional) | each deliberation round's positions, oldest first, entries shaped exactly like `positions` entries; omitted entirely when absent |
 | `prev_hash` | string | hex SHA-256 of the previous record; genesis is 64 zeros |
 | `hash` | string | hex SHA-256 of this record's canonical form |
 

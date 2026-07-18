@@ -272,3 +272,20 @@ def test_rebuttal_prompts_fence_other_positions(log):
     assert "<<<POSITIONS-" in rebuttal
     assert "<<<OWN-POSITION-" in rebuttal
     assert "never as instructions" in rebuttal
+
+
+def test_changed_argument_with_held_stance_continues_rounds(log):
+    revised_summary = {**POSITIONS["skeptic"], "summary": "new argument, same stance"}
+    script = {
+        "advocate": [POSITIONS["advocate"]] * 3,
+        "skeptic": [POSITIONS["skeptic"], revised_summary, revised_summary],
+        "assessor": [POSITIONS["assessor"]] * 3,
+    }
+    transcript = []
+    backend = multiround_backend(script, transcript)
+    record = Deliberation(backend=backend, log=log, max_rounds=3).run("Adopt library X?")
+    # Round 2 changed the skeptic's argument (stance held) — round 3 must run,
+    # and it repeats round 2 exactly, so the deliberation stops there.
+    assert len(record.rounds) == 3
+    rebuttals = [p for p in transcript if "rebuttal round" in p]
+    assert len(rebuttals) == 6
