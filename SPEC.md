@@ -2,10 +2,11 @@
 
 **Versions 0.1 and 0.2** (the `schema_version` field). 0.2 adds one
 optional field: `rounds` — an array of position-arrays recording each
-deliberation round when more than one occurred; it is **omitted entirely**
-when absent, so single-round 0.2 records serialize byte-identically to 0.1
-records. When present, each entry must satisfy the same shape as
-`positions` entries. This document is the normative
+deliberation round when more than one occurred. **The version marks feature
+use**: writers label a record 0.2 only when `rounds` is present; records
+without it are written as 0.1 and therefore remain byte- and hash-identical
+to pre-0.2 records. Verifiers reject `rounds` in a record labeled 0.1, and
+validate each rounds entry against the `positions` entry shape in 0.2. This document is the normative
 definition of the record format. Any tool may emit or verify Caucus decision
 records by conforming to it; the reference implementation is
 [`src/caucus/record.py`](src/caucus/record.py).

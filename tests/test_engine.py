@@ -232,6 +232,7 @@ def test_rebuttal_round_records_history_and_converges(log):
     record = Deliberation(backend=backend, log=log, max_rounds=3).run("Adopt library X?")
     # Round 2 reached unanimity — round 3 must not run.
     assert len(record.rounds) == 2
+    assert record.schema_version == "0.2"
     assert {p["stance"] for p in record.positions} == {"for"}
     assert record.dissent == []
     result = log.verify()
@@ -244,6 +245,7 @@ def test_unanimity_in_round_one_skips_rebuttals(log):
     backend = scripted_backend(unanimous, VERDICT, calls)
     record = Deliberation(backend=backend, log=log, max_rounds=3).run("Adopt library X?")
     assert record.rounds == []
+    assert record.schema_version == "0.1"
     assert len(calls) == 4  # 3 analysts + chair, no rebuttal calls
     # Single-round records serialize without a rounds key at all.
     assert '"rounds"' not in record.to_line()

@@ -15,7 +15,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from caucus.backends import Backend, BackendError
-from caucus.record import DecisionLog, DecisionRecord, _valid_confidence
+from caucus.record import (
+    ROUNDS_SCHEMA_VERSION,
+    SCHEMA_VERSION,
+    DecisionLog,
+    DecisionRecord,
+    _valid_confidence,
+)
 
 STANCES = ("for", "against", "mixed")
 
@@ -238,6 +244,7 @@ class Deliberation:
                 for item in evidence
             ],
             rounds=rounds if len(rounds) > 1 else [],
+            schema_version=ROUNDS_SCHEMA_VERSION if len(rounds) > 1 else SCHEMA_VERSION,
         )
         return self.log.append(record)
 
