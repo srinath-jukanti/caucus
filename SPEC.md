@@ -173,6 +173,23 @@ checkpoint and launder the failure. Recovery from a legitimately damaged log
 manual act: investigate, then remove the checkpoint; the next append
 re-anchors the log as it stands.
 
+## External anchoring
+
+The chain is unkeyed: an attacker who can rewrite the whole log can
+regenerate every hash and the checkpoint, and plain verification passes.
+Anchoring defeats this. An **anchors file** (`<log>.anchors`) is append-only
+JSONL of `{"anchored_at": <ISO-8601 UTC>, "count": N, "head_hash": "..."}`
+entries, each recording the chain's head at a moment in time. What makes an
+anchor binding is shipping it **outside the log's trust domain** — a git
+remote, a timestamping service, another machine — via the configured
+`anchor_command` (which receives the anchors-file path).
+
+Anchor verification recomputes the chain and requires, for every anchor,
+that the hash of record `count` equals `head_hash`. A rewritten history
+cannot reproduce previously anchored heads; a log shorter than an anchor's
+`count` fails likewise. Writers refuse to anchor a log that fails plain
+verification.
+
 Be honest about the trust model: the checkpoint lives in the same directory
 as the log, so an attacker who can rewrite both can still truncate silently.
 The checkpoint defends against accidental truncation and unsophisticated

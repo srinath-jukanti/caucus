@@ -465,9 +465,80 @@ def briefing(
 
 
 @app.command()
-def verify(path: Path) -> None:
-    """Verify the hash chain of a decision log (see SPEC.md)."""
+def anchor(log: Path = Path("decisions.jsonl"), config: Path | None = None) -> None:
+    """Record the log's head hash as an anchor and ship it out of the trust domain.
+
+    Appends {anchored_at, count, head_hash} to <log>.anchors, then runs the
+    configured anchor_command with that path (git commit+push, curl to a
+    timestamping service, scp — anything that puts it where a local attacker
+    cannot rewrite it). Verify against a fetched copy with
+    'caucus verify <log> --anchors <copy>'.
+    """
+    import shlex
+    import subprocess
+
+    from caucus.anchor import AnchorError, anchors_path_for, append_anchor
+    from caucus.config import Config, ConfigError
+
+    anchor_command = None
+    config_path = (
+        config if config else Path("config.yaml") if Path("config.yaml").exists() else None
+    )
+    if config_path is not None:
+        try:
+            loaded = Config.load(config_path)
+        except ConfigError as err:
+            typer.echo(f"invalid config {config_path}: {err}", err=True)
+            raise typer.Exit(2) from err
+        anchor_command = loaded.anchor_command
+        if log == Path("decisions.jsonl"):
+            log = loaded.log
+
+    decision_log = DecisionLog(log)
+    try:
+        entry = append_anchor(decision_log)
+    except AnchorError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(1) from err
+    anchors = anchors_path_for(decision_log)
+    typer.echo(f"anchored {entry['count']} records, head {entry['head_hash'][:16]}… → {anchors}")
+    if anchor_command:
+        quoted = shlex.quote(str(anchors))
+        # {path} substitution supports compound commands (git add {path} && ...);
+        # appending the path to the whole string would hand it to the LAST
+        # command (e.g. git push) instead.
+        if "{path}" in anchor_command:
+            command = anchor_command.replace("{path}", quoted)
+        else:
+            command = f"{anchor_command} {quoted}"
+        completed = subprocess.run(command, shell=True)
+        if completed.returncode != 0:
+            typer.echo(f"anchor command exited {completed.returncode}", err=True)
+            raise typer.Exit(1)
+        typer.echo("anchor shipped")
+
+
+@app.command()
+def verify(path: Path, anchors: Path | None = None) -> None:
+    """Verify the hash chain of a decision log (see SPEC.md).
+
+    With --anchors, additionally prove the log still matches previously
+    anchored heads — a full-log rewrite passes plain verification but cannot
+    reproduce the anchors.
+    """
     result = DecisionLog(path).verify()
+    if result.ok and anchors is not None:
+        from caucus.anchor import AnchorError, verify_anchors
+
+        try:
+            anchored = verify_anchors(DecisionLog(path), anchors)
+        except AnchorError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(2) from err
+        if not anchored.ok:
+            typer.echo(f"ANCHOR FAILURE — {anchored.reason}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"anchors OK — {anchored.checked} anchors match the chain")
     if result.ok:
         anchor = (
             "anchored to head checkpoint"
