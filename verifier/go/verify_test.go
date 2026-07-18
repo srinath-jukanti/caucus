@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -260,5 +261,43 @@ func TestRunUsageAndVerify(t *testing.T) {
 	}
 	if code := run([]string{}, &out, &errOut); code != 2 {
 		t.Fatalf("expected usage exit 2, got %d", code)
+	}
+}
+
+func TestMissingLogVerifiesAsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "never-written.jsonl")
+	result := verifyLog(path, "")
+	if !result.OK || result.Count != 0 {
+		t.Fatalf("expected missing log to verify as empty, got %+v", result)
+	}
+	headPath := filepath.Join(dir, "head.json")
+	genesis := `{"count": 0, "head_hash": "` + genesisHash + `"}`
+	if err := os.WriteFile(headPath, []byte(genesis), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := verifyLog(path, headPath); !result.OK {
+		t.Fatalf("expected genesis checkpoint to hold for missing log, got %+v", result)
+	}
+	bogus := `{"count": 3, "head_hash": "` + genesisHash + `"}`
+	if err := os.WriteFile(headPath, []byte(bogus), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := verifyLog(path, headPath); result.OK {
+		t.Fatalf("expected count mismatch against missing log, got %+v", result)
+	}
+}
+
+func TestOversizedRecordVerifies(t *testing.T) {
+	// The format defines no maximum record size — a line larger than any
+	// fixed scanner buffer (>16 MiB) must still verify.
+	big := strings.Repeat("x", 17*1024*1024)
+	first := record(t, map[string]any{
+		"evidence": []any{map[string]any{"source": "bulk", "ref": big}},
+	}, genesisHash)
+	path := writeLog(t, first)
+	result := verifyLog(path, "")
+	if !result.OK || result.Count != 1 {
+		t.Fatalf("expected oversized record to verify, got OK=%v reason=%q", result.OK, result.Reason)
 	}
 }

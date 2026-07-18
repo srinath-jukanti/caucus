@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -45,52 +46,64 @@ func contentHash(payload map[string]any) (string, error) {
 }
 
 func verifyLog(path string, headPath string) VerifyResult {
-	file, err := os.Open(path)
-	if err != nil {
-		return fail(0, -1, fmt.Sprintf("cannot open log: %v", err))
-	}
-	defer file.Close()
-
 	prev := genesisHash
 	count := 0
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
+	file, err := os.Open(path)
+	if err != nil {
+		// SPEC: a missing log verifies as an intact zero-record chain, same
+		// as the Python reference. Other open errors are still failures.
+		if !os.IsNotExist(err) {
+			return fail(0, -1, fmt.Sprintf("cannot open log: %v", err))
 		}
-		if !utf8.Valid(line) {
-			return fail(count, count, "invalid encoding")
-		}
-		payload, err := parseLine(line)
-		if err != nil {
-			if strings.Contains(err.Error(), "duplicate key") {
-				return fail(count, count, "duplicate key")
+	} else {
+		defer file.Close()
+		reader := bufio.NewReader(file)
+		for {
+			// ReadBytes instead of a Scanner: the format defines no maximum
+			// record size, so no fixed buffer may reject a conforming line.
+			line, readErr := reader.ReadBytes('\n')
+			if readErr != nil && readErr != io.EOF {
+				// A partial line from a real read error is untrustworthy.
+				return fail(count, count, fmt.Sprintf("cannot read log: %v", readErr))
 			}
-			if strings.Contains(err.Error(), "lone surrogate") {
-				return fail(count, count, "lone surrogate in string")
+			if len(bytes.TrimSpace(line)) == 0 {
+				if readErr != nil {
+					break
+				}
+				continue
 			}
-			return fail(count, count, "malformed record")
+			if !utf8.Valid(line) {
+				return fail(count, count, "invalid encoding")
+			}
+			payload, err := parseLine(line)
+			if err != nil {
+				if strings.Contains(err.Error(), "duplicate key") {
+					return fail(count, count, "duplicate key")
+				}
+				if strings.Contains(err.Error(), "lone surrogate") {
+					return fail(count, count, "lone surrogate in string")
+				}
+				return fail(count, count, "malformed record")
+			}
+			if reason := recordViolation(payload); reason != "" {
+				return fail(count, count, reason)
+			}
+			if payload["prev_hash"].(string) != prev {
+				return fail(count, count, "broken chain link")
+			}
+			computed, err := contentHash(payload)
+			if err != nil {
+				return fail(count, count, err.Error())
+			}
+			if computed != payload["hash"].(string) {
+				return fail(count, count, "content hash mismatch")
+			}
+			prev = payload["hash"].(string)
+			count++
+			if readErr != nil {
+				break
+			}
 		}
-		if reason := recordViolation(payload); reason != "" {
-			return fail(count, count, reason)
-		}
-		if payload["prev_hash"].(string) != prev {
-			return fail(count, count, "broken chain link")
-		}
-		computed, err := contentHash(payload)
-		if err != nil {
-			return fail(count, count, err.Error())
-		}
-		if computed != payload["hash"].(string) {
-			return fail(count, count, "content hash mismatch")
-		}
-		prev = payload["hash"].(string)
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		return fail(count, count, "invalid encoding")
 	}
 	if headPath != "" {
 		if reason := checkHead(headPath, count, prev); reason != "" {
