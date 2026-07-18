@@ -68,6 +68,9 @@ func verifyLog(path string, headPath string) VerifyResult {
 			if strings.Contains(err.Error(), "duplicate key") {
 				return fail(count, count, "duplicate key")
 			}
+			if strings.Contains(err.Error(), "lone surrogate") {
+				return fail(count, count, "lone surrogate in string")
+			}
 			return fail(count, count, "malformed record")
 		}
 		if reason := recordViolation(payload); reason != "" {

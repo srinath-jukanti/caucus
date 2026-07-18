@@ -465,3 +465,22 @@ def test_schema_02_without_rounds_rejected(log):
     result = log.verify()
     assert not result.ok
     assert result.reason == "schema 0.2 requires rounds"
+
+
+def test_lone_surrogate_rejected(log):
+    log.append(make_record())
+    line = log.path.read_text().rstrip("\n")
+    smuggled = line.replace('"subject":"Trim QQQ?"', '"subject":"Trim \\ud800 QQQ?"')
+    assert smuggled != line
+    log.path.write_text(smuggled + "\n")
+    result = log.verify()
+    assert not result.ok
+    assert result.reason in ("lone surrogate in string", "content hash mismatch")
+
+
+def test_writer_refuses_lone_surrogate(tmp_path):
+    fresh = DecisionLog(tmp_path / "fresh.jsonl")
+    bad = make_record()
+    bad.subject = "bad \ud800 subject"
+    with pytest.raises(ValueError, match="lone surrogate"):
+        fresh.append(bad)

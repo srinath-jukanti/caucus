@@ -196,6 +196,24 @@ def _valid_confidence(value) -> bool:
     return not isinstance(value, bool) and isinstance(value, int | float) and 0 <= value <= 1
 
 
+def _has_lone_surrogate(value) -> bool:
+    """JSON parsers disagree on unpaired UTF-16 surrogates (Python preserves
+    them, Go replaces them), so reference verifiers would hash differently —
+    they are rejected outright, in any string, at any depth."""
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, str):
+            if any(0xD800 <= ord(ch) <= 0xDFFF for ch in current):
+                return True
+        elif isinstance(current, dict):
+            stack.extend(current.keys())
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return False
+
+
 def _record_violation(payload: dict) -> str | None:
     """Full record validation, shared by the writer and the verifier."""
     if not REQUIRED_FIELDS <= payload.keys():
@@ -203,6 +221,8 @@ def _record_violation(payload: dict) -> str | None:
     numeric = _numeric_violation(payload)
     if numeric is not None:
         return numeric
+    if _has_lone_surrogate(payload):
+        return "lone surrogate in string"
     if not isinstance(payload["schema_version"], str):
         return "invalid schema_version type"
     if payload["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:

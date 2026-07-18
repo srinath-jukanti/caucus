@@ -88,7 +88,47 @@ func decodeValue(dec *json.Decoder, tok json.Token) (any, error) {
 	}
 }
 
+// loneSurrogateEscape reports whether the raw JSON text contains an unpaired
+// \uD800-\uDFFF escape. Go's decoder silently replaces these with U+FFFD —
+// bytes the Python reference would not hash — so SPEC forbids them and they
+// must be caught before decoding destroys the evidence.
+func loneSurrogateEscape(line []byte) bool {
+	for i := 0; i+5 < len(line); i++ {
+		if line[i] != '\\' {
+			continue
+		}
+		backslashes := 1
+		for j := i - 1; j >= 0 && line[j] == '\\'; j-- {
+			backslashes++
+		}
+		if backslashes%2 == 0 || line[i+1] != 'u' {
+			continue
+		}
+		value, err := strconv.ParseUint(string(line[i+2:i+6]), 16, 32)
+		if err != nil {
+			continue
+		}
+		if value >= 0xD800 && value <= 0xDBFF { // high surrogate: needs a low next
+			if i+11 < len(line) && line[i+6] == '\\' && line[i+7] == 'u' {
+				low, pairErr := strconv.ParseUint(string(line[i+8:i+12]), 16, 32)
+				if pairErr == nil && low >= 0xDC00 && low <= 0xDFFF {
+					i += 11 // valid pair — skip past it
+					continue
+				}
+			}
+			return true
+		}
+		if value >= 0xDC00 && value <= 0xDFFF { // low without a preceding high
+			return true
+		}
+	}
+	return false
+}
+
 func parseLine(line []byte) (map[string]any, error) {
+	if loneSurrogateEscape(line) {
+		return nil, fmt.Errorf("lone surrogate in string")
+	}
 	dec := json.NewDecoder(bytes.NewReader(line))
 	dec.UseNumber()
 	value, err := decodeStrict(dec)

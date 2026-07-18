@@ -48,7 +48,9 @@ because a single serialization difference changes the hash:
 - non-ASCII characters escaped as `\uXXXX` with lowercase hex digits (the
   canonical form is pure ASCII),
 - strings escaped per RFC 8259, using the short escapes (`\n`, `\"`, `\\`)
-  where they exist,
+  where they exist; **unpaired UTF-16 surrogates are forbidden** anywhere in
+  a record (escaped or literal) — JSON parsers disagree on their handling,
+  so verifiers reject them rather than hash implementation-dependent bytes,
 - floats spelled exactly as CPython's `repr`/`json.dumps` algorithm emits
   them: the shortest decimal string that round-trips the IEEE-754 double,
   rendered with Python's notation rules — exponent form only when the

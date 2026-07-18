@@ -224,3 +224,41 @@ func TestEmptyLogCheckpointHashChecked(t *testing.T) {
 		t.Fatalf("expected genesis checkpoint to verify an empty log, got %+v", result)
 	}
 }
+
+func TestLoneSurrogatesRejected(t *testing.T) {
+	first := record(t, nil, genesisHash)
+	lone := bytes.Replace([]byte(first), []byte(`"q"`), []byte(`"q \ud800"`), 1)
+	path := writeLog(t, string(lone))
+	result := verifyLog(path, "")
+	if result.OK || result.Reason != "lone surrogate in string" {
+		t.Fatalf("expected lone-surrogate rejection, got %+v", result)
+	}
+	// A valid pair and a literal backslash-u (escaped backslash) both pass the scan.
+	if loneSurrogateEscape([]byte(`"emoji 😀 ok"`)) {
+		t.Fatal("valid surrogate pair wrongly flagged")
+	}
+	if loneSurrogateEscape([]byte(`"literal \\ud800 text"`)) {
+		t.Fatal("escaped backslash wrongly flagged")
+	}
+	if !loneSurrogateEscape([]byte(`"low first \udc00"`)) {
+		t.Fatal("lone low surrogate missed")
+	}
+}
+
+func TestRunUsageAndVerify(t *testing.T) {
+	first := record(t, nil, genesisHash)
+	path := writeLog(t, first)
+	var out, errOut bytes.Buffer
+	if code := run([]string{path}, &out, &errOut); code != 0 {
+		t.Fatalf("expected success, got %d: %s", code, errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	// The documented order (flags first) works with a head file too.
+	if code := run([]string{"-head", path + ".missing", path}, &out, &errOut); code != 1 {
+		t.Fatalf("expected checkpoint failure exit 1, got %d", code)
+	}
+	if code := run([]string{}, &out, &errOut); code != 2 {
+		t.Fatalf("expected usage exit 2, got %d", code)
+	}
+}
