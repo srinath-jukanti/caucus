@@ -185,3 +185,42 @@ func TestUnsafeIntegerRejected(t *testing.T) {
 		t.Fatalf("expected unsafe-integer rejection, got %+v", result)
 	}
 }
+
+func TestTrailingDataRejected(t *testing.T) {
+	first := record(t, nil, genesisHash)
+	path := writeLog(t, first+` {"extra":true}`)
+	result := verifyLog(path, "")
+	if result.OK || result.Reason != "malformed record" {
+		t.Fatalf("expected malformed record for trailing object, got %+v", result)
+	}
+	path = writeLog(t, first+" 42")
+	result = verifyLog(path, "")
+	if result.OK {
+		t.Fatalf("expected rejection for trailing scalar, got %+v", result)
+	}
+}
+
+func TestEmptyLogCheckpointHashChecked(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "empty.jsonl")
+	if err := os.WriteFile(logPath, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	headPath := filepath.Join(dir, "empty.jsonl.head")
+	bogus := `{"count": 0, "head_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`
+	if err := os.WriteFile(headPath, []byte(bogus), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := verifyLog(logPath, headPath)
+	if result.OK {
+		t.Fatalf("expected mismatch for bogus empty-log checkpoint, got %+v", result)
+	}
+	genesis := `{"count": 0, "head_hash": "` + genesisHash + `"}`
+	if err := os.WriteFile(headPath, []byte(genesis), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result = verifyLog(logPath, headPath)
+	if !result.OK {
+		t.Fatalf("expected genesis checkpoint to verify an empty log, got %+v", result)
+	}
+}

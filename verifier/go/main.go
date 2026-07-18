@@ -4,7 +4,9 @@
 // Python reference agree on every record and every golden vector, the
 // format is a standard, not an artifact of one codebase.
 //
-// Usage: caucus-verify <log.jsonl> [-head <log.jsonl.head>]
+// Usage: caucus-verify [-head <log.jsonl.head>] <log.jsonl>
+// (flags precede the log path — Go flag parsing stops at the first
+// positional argument)
 package main
 
 import (
@@ -17,7 +19,7 @@ func main() {
 	head := flag.String("head", "", "path to the head checkpoint file")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: caucus-verify <log.jsonl> [-head <file>]")
+		fmt.Fprintln(os.Stderr, "usage: caucus-verify [-head <file>] <log.jsonl>")
 		os.Exit(2)
 	}
 	result := verifyLog(flag.Arg(0), *head)

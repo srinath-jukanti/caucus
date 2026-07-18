@@ -114,7 +114,9 @@ func checkHead(path string, count int, head string) string {
 	if !ok || !hexHash.MatchString(expectedHash) {
 		return "malformed head checkpoint"
 	}
-	if int(expectedCount) != count || (count > 0 && expectedHash != head) {
+	// head is genesisHash for an empty log, so the comparison holds for
+	// count == 0 too — a mismatched checkpoint must never pass on emptiness.
+	if int(expectedCount) != count || expectedHash != head {
 		return "head checkpoint mismatch (possible truncation)"
 	}
 	return ""

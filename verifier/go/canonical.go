@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"sort"
@@ -93,6 +94,11 @@ func parseLine(line []byte) (map[string]any, error) {
 	value, err := decodeStrict(dec)
 	if err != nil {
 		return nil, err
+	}
+	// A line must be exactly one JSON object — trailing data would let a
+	// second, unhashed object ride along on a certified line.
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, fmt.Errorf("trailing data after JSON object")
 	}
 	obj, ok := value.(map[string]any)
 	if !ok {
