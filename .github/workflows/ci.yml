@@ -45,20 +45,67 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+  verifier-go:
+    name: Go verifier (cross-implementation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Unit tests and golden vectors
+        working-directory: verifier/go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Cross-implementation check (Python writes, Go verifies)
+        run: |
+          uv sync --frozen
+          uv run python - <<'PYEOF'
+          from caucus.record import DecisionLog, DecisionRecord
+          log = DecisionLog("cross.jsonl")
+          log.append(DecisionRecord(subject="plain 0.1 — héllo ✓", decision="yes", confidence=0.8,
+              positions=[{"agent": "a", "stance": "for", "summary": "s", "confidence": 0.9}],
+              evidence=[{"source": "x", "ref": "y", "weight": 12}]))
+          log.append(DecisionRecord(subject="multi-round 0.2", decision="proceed", confidence=0.75,
+              positions=[{"agent": "a", "stance": "for", "summary": "final", "confidence": 0.7}],
+              rounds=[[{"agent": "a", "stance": "against", "summary": "r1", "confidence": 0.5}],
+                      [{"agent": "a", "stance": "for", "summary": "final", "confidence": 0.7}]],
+              schema_version="0.2"))
+          PYEOF
+          cd verifier/go
+          go run . -head ../../cross.jsonl.head ../../cross.jsonl
+          sed 's/proceed/forged/' ../../cross.jsonl > ../../tampered.jsonl
+          if go run . ../../tampered.jsonl; then
+            echo "::error::tampered log passed the Go verifier"
+            exit 1
+          fi
+          echo "tampered log correctly rejected"
+
   quality:
     # Stable required-status name for branch protection, gating the whole matrix.
     # if: always() is load-bearing — a skipped required job counts as SUCCESS
     # for branch protection, so this job must run and fail explicitly.
     name: Verify package
     if: always()
-    needs: test
+    needs: [test, verifier-go]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Fail unless every matrix leg passed
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "matrix result: ${{ needs.test.result }}"
+          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.verifier-go.result }}" != "success" ]; then
+            echo "matrix: ${{ needs.test.result }}, go verifier: ${{ needs.verifier-go.result }}"
             exit 1
           fi
-          echo "all matrix legs passed"
+          echo "all matrix legs and the Go verifier passed"
