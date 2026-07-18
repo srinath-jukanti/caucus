@@ -46,8 +46,12 @@ except ImportError:  # Windows
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+# Writers use 0.1 unless a record carries 0.2-only features (rounds) — the
+# version marks feature use, so feature-free records stay byte-identical to
+# their 0.1 form.
 SCHEMA_VERSION = "0.1"
-SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1"})
+ROUNDS_SCHEMA_VERSION = "0.2"
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1", "0.2"})
 GENESIS_HASH = "0" * 64
 REQUIRED_FIELDS = frozenset(
     {
@@ -146,6 +150,25 @@ def _schema_violation(payload: dict) -> str | None:
             isinstance(item, dict) for item in payload[key]
         ):
             return f"invalid {key} structure"
+    if payload["schema_version"] == "0.2" and "rounds" not in payload:
+        # The version marks feature use — 0.2 when and ONLY when rounds exists.
+        return "schema 0.2 requires rounds"
+    if "rounds" in payload:
+        if payload["schema_version"] == "0.1":
+            # rounds is a 0.2 feature — a 0.1 label with rounds misrepresents
+            # which format the record conforms to.
+            return "rounds not allowed in schema 0.1"
+        rounds = payload["rounds"]
+        if not isinstance(rounds, list) or not all(isinstance(r, list) for r in rounds):
+            return "invalid rounds structure"
+        for round_positions in rounds:
+            for entry in round_positions:
+                if not isinstance(entry, dict) or any(
+                    not isinstance(entry.get(k), str) for k in ("agent", "stance", "summary")
+                ):
+                    return "invalid rounds entry"
+                if not _valid_confidence(entry.get("confidence")):
+                    return "invalid rounds entry"
     for key in ("positions", "dissent"):
         for entry in payload[key]:
             if any(not isinstance(entry.get(k), str) for k in ("agent", "stance", "summary")):
@@ -197,16 +220,25 @@ class DecisionRecord:
     positions: list[dict] = field(default_factory=list)
     dissent: list[dict] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
+    rounds: list[list[dict]] = field(default_factory=list)
     timestamp: str = field(default_factory=_utc_now)
     schema_version: str = SCHEMA_VERSION
     prev_hash: str = GENESIS_HASH
     hash: str = ""
 
+    def payload(self) -> dict:
+        # 'rounds' is omitted when empty so single-round records serialize
+        # exactly as 0.1 records did — hashes and vectors stay stable.
+        data = asdict(self)
+        if not data.get("rounds"):
+            data.pop("rounds", None)
+        return data
+
     def compute_hash(self) -> str:
-        return content_hash(asdict(self))
+        return content_hash(self.payload())
 
     def to_line(self) -> str:
-        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return json.dumps(self.payload(), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
     @classmethod
     def from_line(cls, line: str) -> DecisionRecord:
@@ -257,13 +289,14 @@ class DecisionLog:
                     + ")"
                 )
             record.prev_hash, count = self._chain_tip()
-            numeric = _numeric_violation(asdict(record))
+            # Validate the SERIALIZED payload, not asdict(): payload() drops an
+            # empty rounds list (and keeps schema semantics aligned with what
+            # is actually written and hashed).
+            numeric = _numeric_violation(record.payload())
             if numeric is not None:
-                # Checked before hashing — canonical_form would otherwise raise or
-                # serialize a non-portable value.
                 raise ValueError(f"invalid record: {numeric}")
             record.hash = record.compute_hash()
-            violation = _record_violation(asdict(record))
+            violation = _record_violation(record.payload())
             if violation is not None:
                 raise ValueError(f"invalid record: {violation}")
             with self.path.open("a", encoding="utf-8") as f:

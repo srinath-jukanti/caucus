@@ -311,6 +311,7 @@ def deliberate(
     backend: str = "claude",
     model: str | None = None,
     base_url: str | None = None,
+    rounds: int | None = None,
 ) -> None:
     """Convene the analyst panel on SUBJECT and append the outcome to the log.
 
@@ -362,9 +363,15 @@ def deliberate(
         typer.echo(f"unknown backend {backend!r} (expected 'claude' or 'openai')", err=True)
         raise typer.Exit(2)
 
-    record = Deliberation(backend=agent_backend, log=DecisionLog(log), panel=panel).run(
-        subject, items
+    max_rounds = (
+        rounds if rounds is not None else getattr(loaded, "max_rounds", 1) if config_path else 1
     )
+    if not 1 <= max_rounds <= 4:
+        typer.echo("--rounds must be between 1 and 4", err=True)
+        raise typer.Exit(2)
+    record = Deliberation(
+        backend=agent_backend, log=DecisionLog(log), panel=panel, max_rounds=max_rounds
+    ).run(subject, items)
     typer.echo(f"DECISION ({record.confidence:.0%} confidence): {record.decision}")
     for position in record.dissent:
         typer.echo(f"DISSENT [{position['agent']}]: {position['summary']}")
@@ -406,7 +413,10 @@ def briefing(
 
     items = _configured_evidence(loaded)
     deliberation = Deliberation(
-        backend=loaded.backend, log=DecisionLog(loaded.log), panel=loaded.panel
+        backend=loaded.backend,
+        log=DecisionLog(loaded.log),
+        panel=loaded.panel,
+        max_rounds=loaded.max_rounds,
     )
     result = run_agenda(deliberation, loaded.agenda, items)
 

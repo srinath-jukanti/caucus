@@ -1,6 +1,12 @@
 # Caucus Decision Record — Specification
 
-**Version 0.1** (the `schema_version` field). This document is the normative
+**Versions 0.1 and 0.2** (the `schema_version` field). 0.2 adds one
+optional field: `rounds` — an array of position-arrays recording each
+deliberation round when more than one occurred. **The version marks feature
+use**: writers label a record 0.2 only when `rounds` is present; records
+without it are written as 0.1 and therefore remain byte- and hash-identical
+to pre-0.2 records. Verifiers reject `rounds` in a record labeled 0.1, and
+validate each rounds entry against the `positions` entry shape in 0.2. This document is the normative
 definition of the record format. Any tool may emit or verify Caucus decision
 records by conforming to it; the reference implementation is
 [`src/caucus/record.py`](src/caucus/record.py).
@@ -17,7 +23,7 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | string | `"0.1"` |
+| `schema_version` | string | `"0.1"`, or `"0.2"` when (and only when) `rounds` is present |
 | `timestamp` | string | ISO 8601 with an explicit UTC offset (`Z` or `+00:00`); naive or non-UTC timestamps do not conform |
 | `subject` | string | what was deliberated |
 | `positions` | array of objects | one per agent: `agent`, `stance`, `summary` (strings) and `confidence` (number, 0–1) |
@@ -25,6 +31,7 @@ read-chain-tip + write, so concurrent writers cannot fork the chain).
 | `dissent` | array of objects | positions that disagreed with the outcome — same entry shape as `positions`, recorded, never dropped |
 | `confidence` | number | consensus confidence, 0–1 |
 | `evidence` | array of objects | citations grounding the decision: `source` and `ref` (strings) |
+| `rounds` | array of arrays (0.2 only, optional) | each deliberation round's positions, oldest first, entries shaped exactly like `positions` entries; omitted entirely when absent |
 | `prev_hash` | string | hex SHA-256 of the previous record; genesis is 64 zeros |
 | `hash` | string | hex SHA-256 of this record's canonical form |
 

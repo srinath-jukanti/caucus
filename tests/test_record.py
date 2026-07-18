@@ -378,6 +378,7 @@ def test_spec_golden_vector():
         dissent=[],
         evidence=[{"source": "spec", "ref": "SPEC.md"}],
         timestamp="2026-07-11T00:00:00+00:00",
+        schema_version="0.1",  # the vector pins the 0.1 profile
     )
     assert (
         record.compute_hash() == "06624a603d2f031db60ad142d28addd8f3483d08ebfc2be16e140753d9bc221d"
@@ -426,3 +427,41 @@ def test_concurrent_appends_keep_chain_intact(log):
     result = log.verify()
     assert result.ok
     assert result.count == 20
+
+
+def test_rounds_rejected_under_schema_01(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["rounds"] = [[{"agent": "a", "stance": "for", "summary": "s", "confidence": 0.5}]]
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "rounds not allowed in schema 0.1"
+
+
+def test_rounds_accepted_and_validated_under_schema_02(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["schema_version"] = "0.2"
+    payload["rounds"] = [[{"agent": "a", "stance": "for", "summary": "s", "confidence": 0.5}]]
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    assert log.verify().ok
+    payload["rounds"] = [[{"agent": "a"}]]
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "invalid rounds entry"
+
+
+def test_schema_02_without_rounds_rejected(log):
+    log.append(make_record())
+    payload = json.loads(log.path.read_text())
+    payload["schema_version"] = "0.2"
+    payload["hash"] = content_hash(payload)
+    rewrite_single_record(log, payload)
+    result = log.verify()
+    assert not result.ok
+    assert result.reason == "schema 0.2 requires rounds"
