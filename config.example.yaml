@@ -3,6 +3,11 @@
 
 log: decisions.jsonl
 
+# Rebuttal rounds with adaptive stopping: 1 = single pass (default cost);
+# higher lets analysts answer each other, stopping early on unanimity or an
+# unchanged round — extra spend only happens on live disagreement.
+# max_rounds: 2
+
 # Standing plans injected into every deliberation as evidence (see 'caucus intents').
 # intents: intents.db
 

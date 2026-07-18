@@ -46,8 +46,8 @@ except ImportError:  # Windows
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
-SCHEMA_VERSION = "0.1"
-SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1"})
+SCHEMA_VERSION = "0.2"
+SUPPORTED_SCHEMA_VERSIONS = frozenset({"0.1", "0.2"})
 GENESIS_HASH = "0" * 64
 REQUIRED_FIELDS = frozenset(
     {
@@ -146,6 +146,18 @@ def _schema_violation(payload: dict) -> str | None:
             isinstance(item, dict) for item in payload[key]
         ):
             return f"invalid {key} structure"
+    if "rounds" in payload:
+        rounds = payload["rounds"]
+        if not isinstance(rounds, list) or not all(isinstance(r, list) for r in rounds):
+            return "invalid rounds structure"
+        for round_positions in rounds:
+            for entry in round_positions:
+                if not isinstance(entry, dict) or any(
+                    not isinstance(entry.get(k), str) for k in ("agent", "stance", "summary")
+                ):
+                    return "invalid rounds entry"
+                if not _valid_confidence(entry.get("confidence")):
+                    return "invalid rounds entry"
     for key in ("positions", "dissent"):
         for entry in payload[key]:
             if any(not isinstance(entry.get(k), str) for k in ("agent", "stance", "summary")):
@@ -197,16 +209,25 @@ class DecisionRecord:
     positions: list[dict] = field(default_factory=list)
     dissent: list[dict] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
+    rounds: list[list[dict]] = field(default_factory=list)
     timestamp: str = field(default_factory=_utc_now)
     schema_version: str = SCHEMA_VERSION
     prev_hash: str = GENESIS_HASH
     hash: str = ""
 
+    def payload(self) -> dict:
+        # 'rounds' is omitted when empty so single-round records serialize
+        # exactly as 0.1 records did — hashes and vectors stay stable.
+        data = asdict(self)
+        if not data.get("rounds"):
+            data.pop("rounds", None)
+        return data
+
     def compute_hash(self) -> str:
-        return content_hash(asdict(self))
+        return content_hash(self.payload())
 
     def to_line(self) -> str:
-        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return json.dumps(self.payload(), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
     @classmethod
     def from_line(cls, line: str) -> DecisionRecord:

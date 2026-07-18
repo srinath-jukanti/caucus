@@ -378,6 +378,7 @@ def test_spec_golden_vector():
         dissent=[],
         evidence=[{"source": "spec", "ref": "SPEC.md"}],
         timestamp="2026-07-11T00:00:00+00:00",
+        schema_version="0.1",  # the vector pins the 0.1 profile
     )
     assert (
         record.compute_hash() == "06624a603d2f031db60ad142d28addd8f3483d08ebfc2be16e140753d9bc221d"

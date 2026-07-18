@@ -1,6 +1,11 @@
 # Caucus Decision Record — Specification
 
-**Version 0.1** (the `schema_version` field). This document is the normative
+**Versions 0.1 and 0.2** (the `schema_version` field). 0.2 adds one
+optional field: `rounds` — an array of position-arrays recording each
+deliberation round when more than one occurred; it is **omitted entirely**
+when absent, so single-round 0.2 records serialize byte-identically to 0.1
+records. When present, each entry must satisfy the same shape as
+`positions` entries. This document is the normative
 definition of the record format. Any tool may emit or verify Caucus decision
 records by conforming to it; the reference implementation is
 [`src/caucus/record.py`](src/caucus/record.py).

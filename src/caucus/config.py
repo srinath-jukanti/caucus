@@ -27,6 +27,7 @@ class Config:
     backend: Backend = field(default_factory=ClaudeCodeBackend)
     panel: list[Analyst] = field(default_factory=lambda: list(DEFAULT_PANEL))
     intents: Path | None = None
+    max_rounds: int = 1
     evidence_sources: list[EvidenceSource] = field(default_factory=list)
     agenda: list[str] = field(default_factory=list)
     notify: EmailNotifier | CommandNotifier | None = None
@@ -51,6 +52,11 @@ class Config:
             if not isinstance(raw["intents"], str) or not raw["intents"].strip():
                 raise ConfigError("'intents' must be a non-empty string path")
             config.intents = Path(raw["intents"])
+        if "max_rounds" in raw:
+            rounds = raw["max_rounds"]
+            if isinstance(rounds, bool) or not isinstance(rounds, int) or not 1 <= rounds <= 4:
+                raise ConfigError("'max_rounds' must be an integer between 1 and 4")
+            config.max_rounds = rounds
         if "backend" in raw:
             config.backend = _build_backend(raw["backend"])
         if "panel" in raw:
