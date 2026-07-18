@@ -106,6 +106,10 @@ def verify_anchors(log: DecisionLog, anchors_path: Path | None = None) -> Anchor
                     reason=f"anchor {index} mismatch at record {count} — history rewritten",
                 )
             checked += 1
+    if checked == 0:
+        # A proof that checked nothing is not a proof — an emptied anchors
+        # file must not earn anchored success.
+        return AnchorResult(ok=False, checked=0, reason="anchors file contains no anchors")
     return AnchorResult(ok=True, checked=checked)
 
 

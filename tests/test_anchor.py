@@ -123,3 +123,15 @@ def test_concurrent_appends_during_anchoring_stay_consistent(log):
     result = verify_anchors(log)
     assert result.ok
     assert result.checked == 5
+
+
+def test_empty_anchors_file_is_not_a_proof(log):
+    log.append(make_record())
+    anchors = anchors_path_for(log)
+    anchors.write_text("")
+    result = verify_anchors(log)
+    assert not result.ok
+    assert "no anchors" in result.reason
+    anchors.write_text("\n\n")
+    result = verify_anchors(log)
+    assert not result.ok
