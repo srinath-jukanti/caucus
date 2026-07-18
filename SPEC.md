@@ -8,8 +8,10 @@ without it are written as 0.1 and therefore remain byte- and hash-identical
 to pre-0.2 records. Verifiers reject `rounds` in a record labeled 0.1, and
 validate each rounds entry against the `positions` entry shape in 0.2. This document is the normative
 definition of the record format. Any tool may emit or verify Caucus decision
-records by conforming to it; the reference implementation is
-[`src/caucus/record.py`](src/caucus/record.py).
+records by conforming to it. Two independent reference verifiers pin the
+format: Python ([`src/caucus/record.py`](src/caucus/record.py)) and Go
+([`verifier/go`](verifier/go)); both reproduce the golden vectors, and CI
+verifies Python-written logs with the Go implementation on every change.
 
 ## Container
 
