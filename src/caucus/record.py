@@ -150,6 +150,9 @@ def _schema_violation(payload: dict) -> str | None:
             isinstance(item, dict) for item in payload[key]
         ):
             return f"invalid {key} structure"
+    if payload["schema_version"] == "0.2" and "rounds" not in payload:
+        # The version marks feature use — 0.2 when and ONLY when rounds exists.
+        return "schema 0.2 requires rounds"
     if "rounds" in payload:
         if payload["schema_version"] == "0.1":
             # rounds is a 0.2 feature — a 0.1 label with rounds misrepresents
