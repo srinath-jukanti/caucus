@@ -1,0 +1,3 @@
+{"answer": "C", "condition": "single", "confidence": 0.99, "correct": true, "dataset": "arc_challenge", "dissent": null, "expected": "C", "id": "Mercury_7030555", "model": "claude-sonnet-4-6", "usage": {"input": 24401, "output": 17}, "wall_seconds": 3.5}
+{"answer": "C", "condition": "single", "confidence": 0.95, "correct": true, "dataset": "arc_challenge", "dissent": null, "expected": "C", "id": "MCAS_2005_8_12", "model": "claude-sonnet-4-6", "usage": {"input": 24383, "output": 17}, "wall_seconds": 3.8}
+{"answer": "D", "condition": "single", "confidence": 1.0, "correct": true, "dataset": "arc_challenge", "dissent": null, "expected": "D", "id": "Mercury_SC_401783", "model": "claude-sonnet-4-6", "usage": {"input": 24566, "output": 17}, "wall_seconds": 3.0}

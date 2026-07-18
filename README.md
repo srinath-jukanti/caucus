@@ -96,6 +96,10 @@ Change any recorded value — a decision, a dissent, a confidence, the presence 
 
 [`examples/trading-robinhood/`](examples/trading-robinhood/) is the reference example — a sanitized distillation of the private system Caucus was extracted from, which has deliberated real portfolio decisions headless, twice a day, on the author's own money since June 2026. It includes a fictional-evidence dry run that needs no brokerage and no API keys, and a live configuration that grounds a macro/momentum/risk panel in read-only Robinhood MCP tools. It deliberates and records; it never trades.
 
+## Benchmarks
+
+Does deliberation beat a single agent, and what does it cost? [`evals/`](evals/) benchmarks the real engine on ARC-Challenge, MMLU-Pro, and GPQA-Diamond against a single-agent baseline — accuracy with bootstrap CIs, calibration (Brier/ECE), whether recorded dissent predicts errors, and honest token costs. Raw per-question records are committed and every deliberation lands in a decision log both reference verifiers certify. Results: [`evals/results/RESULTS.md`](evals/results/RESULTS.md).
+
 ## Status
 
 The v1 core is complete: the hash-chained decision record ([SPEC.md](SPEC.md)), the deliberation engine, provider-agnostic backends, configuration, and the MCP evidence layer — extracted vertical slice by vertical slice from the reference system, every PR adversarially reviewed in public.

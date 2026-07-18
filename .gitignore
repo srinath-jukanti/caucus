@@ -12,3 +12,6 @@ docs/spec.md
 docs/security.md
 docs/contributing.md
 site/
+
+# flock sentinel files next to decision logs
+*.jsonl.lock

@@ -1,0 +1,50 @@
+{
+  "arc_challenge--debate--claude-sonnet-4-6": {
+    "accuracy": 1.0,
+    "accuracy_ci95": [
+      1.0,
+      1.0
+    ],
+    "brier": 0.0003666666666666673,
+    "dissent": {
+      "accuracy_dissent": null,
+      "accuracy_unanimous": 1.0,
+      "n_dissent": 0,
+      "n_unanimous": 3
+    },
+    "ece": 0.016666666666666607,
+    "mean_input_tokens": 99227.66666666667,
+    "mean_output_tokens": 390.6666666666667,
+    "n": 3
+  },
+  "arc_challenge--panel--claude-sonnet-4-6": {
+    "accuracy": 1.0,
+    "accuracy_ci95": [
+      1.0,
+      1.0
+    ],
+    "brier": 0.0002000000000000004,
+    "dissent": {
+      "accuracy_dissent": null,
+      "accuracy_unanimous": 1.0,
+      "n_dissent": 0,
+      "n_unanimous": 3
+    },
+    "ece": 0.013333333333333308,
+    "mean_input_tokens": 99224.0,
+    "mean_output_tokens": 406.3333333333333,
+    "n": 3
+  },
+  "arc_challenge--single--claude-sonnet-4-6": {
+    "accuracy": 1.0,
+    "accuracy_ci95": [
+      1.0,
+      1.0
+    ],
+    "brier": 0.0008666666666666683,
+    "ece": 0.020000000000000018,
+    "mean_input_tokens": 24450.0,
+    "mean_output_tokens": 17.0,
+    "n": 3
+  }
+}
