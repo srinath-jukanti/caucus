@@ -367,3 +367,21 @@ def test_extract_json_unterminated_object_still_fails():
     # and never closed it. Nothing recoverable — the retry path is correct.
     with pytest.raises(EngineError, match="no JSON object"):
         _extract_json('{"stance": "J", "summary": "13.0 = 185.9 / 14.3. Wait — 13x14')
+
+
+def test_extract_json_rejects_truncated_revision_after_complete_object():
+    # A complete answer followed by an unterminated revision: accepting the
+    # earlier object could record the position the model was abandoning.
+    text = '{"stance": "for", "confidence": 0.9}\nWait, reconsidering: {"stance": "against", "conf'
+    with pytest.raises(EngineError, match="unfinished revision"):
+        _extract_json(text)
+
+
+def test_extract_json_recovers_after_unterminated_first_object():
+    text = '{"draft": 1\nprose\n{"stance": "for", "confidence": 0.5}'
+    assert _extract_json(text) == {"stance": "for", "confidence": 0.5}
+
+
+def test_extract_json_stray_brace_in_leading_prose_is_harmless():
+    text = 'think of {x} as a set: {"stance": "mixed", "confidence": 0.4}'
+    assert _extract_json(text) == {"stance": "mixed", "confidence": 0.4}

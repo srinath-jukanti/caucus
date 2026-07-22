@@ -127,47 +127,44 @@ def _extract_json(text: str) -> dict:
     """Pull the JSON object out of an agent response, tolerating prose around it.
 
     Models sometimes emit an answer, second-guess themselves in prose, and
-    emit another — so candidates are tried last-first: the final object is
-    the model's settled answer, and a greedy regex spanning multiple objects
-    would recover none of them.
+    emit another — the last complete object is the model's settled answer.
+    But an *unterminated* object after a complete one reads as a revision cut
+    off mid-thought: accepting the earlier object could record the exact
+    position the model was abandoning, so that case fails to the retry path.
     """
-    for candidate in (text, *reversed(_braced(text))):
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
+    objects, dangling = _scan_objects(text)
+    if objects and not dangling:
+        return objects[-1]
+    if objects:
+        raise EngineError(
+            f"truncated object after a complete one — likely an unfinished revision: {text[-200:]!r}"
+        )
     raise EngineError(f"no JSON object in agent response: {text[:200]!r}")
 
 
-def _braced(text: str) -> list[str]:
-    """Every balanced top-level {...} span, brace-counted outside string literals."""
-    candidates = []
-    depth = 0
-    start = -1
-    in_string = False
-    escaped = False
-    for i, ch in enumerate(text):
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
+def _scan_objects(text: str) -> tuple[list[dict], bool]:
+    """All parseable top-level JSON objects in order, resynchronizing past
+    malformed spans; second value reports an unparseable brace after the
+    last complete object (a truncated trailing candidate)."""
+    decoder = json.JSONDecoder()
+    objects: list[dict] = []
+    dangling = False
+    i = 0
+    while (start := text.find("{", i)) != -1:
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            # A malformed opener must not poison later objects — skip one
+            # character and rescan. It counts as dangling only until a later
+            # object parses cleanly.
+            dangling = True
+            i = start + 1
             continue
-        if ch == '"' and depth > 0:
-            in_string = True
-        elif ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}" and depth > 0:
-            depth -= 1
-            if depth == 0:
-                candidates.append(text[start : i + 1])
-    return candidates
+        if isinstance(value, dict):
+            objects.append(value)
+            dangling = False
+        i = max(end, start + 1)
+    return objects, dangling
 
 
 def _ask(backend: Backend, prompt: str, valid, who: str, attempts: int = 2) -> dict:
