@@ -73,3 +73,17 @@ against any OpenAI-compatible provider (Ollama, vLLM, OpenRouter, ...).
   construction (panel + chair). The question the numbers answer is whether
   accuracy and calibration gains justify that multiple — not whether it is
   free.
+
+## Published run notes (claude-sonnet-4-6, 2026-07-18 → 2026-07-21)
+
+- MMLU-Pro **panel** reports n=149: question `mmlu_pro-4216` exceeded the
+  600 s per-call timeout on every attempt across all retry cycles and is
+  excluded; it completed in the single condition (and was answered
+  incorrectly there).
+- MMLU-Pro **debate** reports n=88: the first 75 questions of the seeded
+  sample (a strict subset of the 150 used by the other conditions) plus 13
+  additional sample questions recorded before the run was rescoped to
+  n=75 to bound cost. All 88 ids are in the committed raw file.
+- Runs were interrupted repeatedly by subscription usage windows and
+  resumed; resumption skips completed question ids, so interruptions do
+  not bias the sample.
