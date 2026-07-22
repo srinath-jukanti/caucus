@@ -9,7 +9,6 @@ in the hash-chained DecisionLog.
 from __future__ import annotations
 
 import json
-import re
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -125,8 +124,14 @@ def _data_block(label: str, text: str) -> str:
 
 
 def _extract_json(text: str) -> dict:
-    """Pull the JSON object out of an agent response, tolerating prose around it."""
-    for candidate in (text, *_braced(text)):
+    """Pull the JSON object out of an agent response, tolerating prose around it.
+
+    Models sometimes emit an answer, second-guess themselves in prose, and
+    emit another — so candidates are tried last-first: the final object is
+    the model's settled answer, and a greedy regex spanning multiple objects
+    would recover none of them.
+    """
+    for candidate in (text, *reversed(_braced(text))):
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError:
@@ -137,8 +142,32 @@ def _extract_json(text: str) -> dict:
 
 
 def _braced(text: str) -> list[str]:
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    return [match.group(0)] if match else []
+    """Every balanced top-level {...} span, brace-counted outside string literals."""
+    candidates = []
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"' and depth > 0:
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                candidates.append(text[start : i + 1])
+    return candidates
 
 
 def _ask(backend: Backend, prompt: str, valid, who: str, attempts: int = 2) -> dict:

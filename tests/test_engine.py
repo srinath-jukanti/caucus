@@ -339,3 +339,31 @@ def test_degenerate_stances_rejected(log):
     backend = scripted_backend(POSITIONS, VERDICT)
     with pytest.raises(ValueError, match="stances"):
         Deliberation(backend=backend, log=log, stances=("only",))
+
+
+def test_extract_json_prefers_final_object_in_multi_object_response():
+    # Real failure specimen from the eval run: answer, prose second-guessing,
+    # then a revised answer. The final object is the settled one.
+    text = (
+        '{"answer": "B", "confidence": 0.97}\n\n'
+        "Wait — during a total lunar eclipse the order is Sun-Earth-Moon.\n\n"
+        '{"answer": "C", "confidence": 0.85}'
+    )
+    assert _extract_json(text) == {"answer": "C", "confidence": 0.85}
+
+
+def test_extract_json_ignores_braces_inside_strings():
+    text = 'noise {"summary": "set {x} and }y{ carefully", "ok": true} trailing'
+    assert _extract_json(text)["ok"] is True
+
+
+def test_extract_json_skips_malformed_earlier_objects():
+    text = '{"broken": } prose {"stance": "for", "confidence": 0.5}'
+    assert _extract_json(text) == {"stance": "for", "confidence": 0.5}
+
+
+def test_extract_json_unterminated_object_still_fails():
+    # The other eval specimen: the model drifted into arithmetic mid-object
+    # and never closed it. Nothing recoverable — the retry path is correct.
+    with pytest.raises(EngineError, match="no JSON object"):
+        _extract_json('{"stance": "J", "summary": "13.0 = 185.9 / 14.3. Wait — 13x14')
