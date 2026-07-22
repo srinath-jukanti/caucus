@@ -1,50 +1,98 @@
 {
   "arc_challenge--debate--claude-sonnet-4-6": {
-    "accuracy": 1.0,
+    "accuracy": 0.9733333333333334,
     "accuracy_ci95": [
-      1.0,
-      1.0
+      0.9466666666666667,
+      0.9933333333333333
     ],
-    "brier": 0.0003666666666666673,
+    "brier": 0.022819333333333334,
     "dissent": {
-      "accuracy_dissent": null,
-      "accuracy_unanimous": 1.0,
-      "n_dissent": 0,
-      "n_unanimous": 3
+      "accuracy_dissent": 1.0,
+      "accuracy_unanimous": 0.9731543624161074,
+      "n_dissent": 1,
+      "n_unanimous": 149
     },
-    "ece": 0.016666666666666607,
-    "mean_input_tokens": 99227.66666666667,
-    "mean_output_tokens": 390.6666666666667,
-    "n": 3
+    "ece": 0.015000000000000024,
+    "mean_input_tokens": 101140.34666666666,
+    "mean_output_tokens": 437.5133333333333,
+    "n": 150
   },
   "arc_challenge--panel--claude-sonnet-4-6": {
-    "accuracy": 1.0,
+    "accuracy": 0.9733333333333334,
     "accuracy_ci95": [
-      1.0,
-      1.0
+      0.9466666666666667,
+      0.9933333333333333
     ],
-    "brier": 0.0002000000000000004,
+    "brier": 0.01962666666666667,
     "dissent": {
-      "accuracy_dissent": null,
-      "accuracy_unanimous": 1.0,
-      "n_dissent": 0,
-      "n_unanimous": 3
+      "accuracy_dissent": 1.0,
+      "accuracy_unanimous": 0.972972972972973,
+      "n_dissent": 2,
+      "n_unanimous": 148
     },
-    "ece": 0.013333333333333308,
-    "mean_input_tokens": 99224.0,
-    "mean_output_tokens": 406.3333333333333,
-    "n": 3
+    "ece": 0.026800000000000126,
+    "mean_input_tokens": 99451.64,
+    "mean_output_tokens": 421.1933333333333,
+    "n": 150
   },
   "arc_challenge--single--claude-sonnet-4-6": {
-    "accuracy": 1.0,
+    "accuracy": 0.96,
     "accuracy_ci95": [
-      1.0,
-      1.0
+      0.9266666666666666,
+      0.9866666666666667
     ],
-    "brier": 0.0008666666666666683,
-    "ece": 0.020000000000000018,
-    "mean_input_tokens": 24450.0,
+    "brier": 0.03388333333333333,
+    "ece": 0.015000000000000013,
+    "mean_input_tokens": 24493.7,
     "mean_output_tokens": 17.0,
-    "n": 3
+    "n": 150
+  },
+  "mmlu_pro--debate--claude-sonnet-4-6": {
+    "accuracy": 0.9204545454545454,
+    "accuracy_ci95": [
+      0.8636363636363636,
+      0.9772727272727273
+    ],
+    "brier": 0.05795795454545454,
+    "dissent": {
+      "accuracy_dissent": 0.8333333333333334,
+      "accuracy_unanimous": 0.926829268292683,
+      "n_dissent": 6,
+      "n_unanimous": 82
+    },
+    "ece": 0.03693181818181825,
+    "mean_input_tokens": 129032.47727272728,
+    "mean_output_tokens": 2674.306818181818,
+    "n": 88
+  },
+  "mmlu_pro--panel--claude-sonnet-4-6": {
+    "accuracy": 0.8590604026845637,
+    "accuracy_ci95": [
+      0.7986577181208053,
+      0.912751677852349
+    ],
+    "brier": 0.09064161073825502,
+    "dissent": {
+      "accuracy_dissent": 0.6666666666666666,
+      "accuracy_unanimous": 0.896,
+      "n_dissent": 24,
+      "n_unanimous": 125
+    },
+    "ece": 0.04818791946308724,
+    "mean_input_tokens": 101276.63087248322,
+    "mean_output_tokens": 2933.8724832214766,
+    "n": 149
+  },
+  "mmlu_pro--single--claude-sonnet-4-6": {
+    "accuracy": 0.78,
+    "accuracy_ci95": [
+      0.7066666666666667,
+      0.8466666666666667
+    ],
+    "brier": 0.17506466666666665,
+    "ece": 0.1315333333333334,
+    "mean_input_tokens": 25985.793333333335,
+    "mean_output_tokens": 1065.7333333333333,
+    "n": 150
   }
 }
